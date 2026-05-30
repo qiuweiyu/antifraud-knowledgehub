@@ -22,6 +22,10 @@ The frontend uses Vue3 + TypeScript + Vite with API wrappers, typed models, rout
 
 PostgreSQL stores categories, rules, cases and analysis records. Redis is wired for local infrastructure readiness and can later support caching or rate-limit counters.
 
+## Module Boundaries
+
+Handlers are intentionally thin: they validate HTTP input and delegate matching to the `riskengine` package or persistence to GORM models. The first MVP avoids authentication, RBAC and microservices so the project remains easy to run locally and easy for contributors to understand.
+
 ## Risk Engine Flow
 
 ```mermaid

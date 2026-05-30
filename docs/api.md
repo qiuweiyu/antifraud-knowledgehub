@@ -44,3 +44,17 @@ Base path: `/api/v1`
 ```
 
 The response includes `risk_score`, `risk_level`, `matched_rules`, `summary` and `recommendations`.
+
+## Response Envelope
+
+Successful responses use:
+
+```json
+{"success":true,"data":{}}
+```
+
+Errors use:
+
+```json
+{"success":false,"error":{"code":"invalid_request","message":"human readable message"}}
+```

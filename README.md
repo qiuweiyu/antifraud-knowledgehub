@@ -48,6 +48,21 @@ Frontend: http://localhost:5173
 
 API docs: http://localhost:8080/swagger/index.html
 
+## Local Development
+
+```bash
+make backend-test
+make frontend-build
+make seed
+```
+
+CLI:
+
+```bash
+cd backend
+go run ./cmd/afkh-cli analyze --text "客服说账户异常，需要转账到安全账户"
+```
+
 ## Tech Stack
 
 - Backend: Go, Gin, GORM, PostgreSQL, Redis, Zap, Viper, swaggo/gin-swagger
@@ -87,6 +102,14 @@ flowchart LR
 ## Screenshots
 
 See [docs/screenshots.md](docs/screenshots.md) for placeholders.
+
+## Documentation
+
+- [Architecture](docs/architecture.md)
+- [API](docs/api.md)
+- [Data schema](docs/data-schema.md)
+- [Risk engine](docs/risk-engine.md)
+- [Roadmap](docs/roadmap.md)
 
 ## Contributing
 

@@ -21,3 +21,7 @@ Each matched rule contributes its configured `weight`. The total score is capped
 ## Output
 
 Matched rules include `rule_code`, `rule_name`, `category_code`, `weight`, `severity`, `evidence`, `explanation` and `recommendation`.
+
+## Future Provider Interface
+
+`semantic_placeholder` rules are implemented as local mock matching in v0.1. They reserve the contract for future optional model or embedding adapters without making local development depend on paid external APIs.

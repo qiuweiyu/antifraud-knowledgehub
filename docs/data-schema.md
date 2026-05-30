@@ -44,3 +44,11 @@ Seed data lives in `data/` and is designed for community review.
   "anonymized": true
 }
 ```
+
+## Contribution Rules
+
+- Use stable `code` values for categories and rules.
+- Keep examples anonymous.
+- Prefer specific evidence patterns over broad keywords.
+- Include explanations and recommendations for every rule.
+- Add a sample that demonstrates the intended match when possible.
