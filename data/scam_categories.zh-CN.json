@@ -1,0 +1,12 @@
+[
+  {"code":"investment_fraud","name":"虚假投资理财","description":"以高收益、保本、内部名额等诱导充值或转账。","severity_default":"high"},
+  {"code":"cashback_task","name":"刷单返利","description":"以任务返佣为名要求先垫付或充值。","severity_default":"high"},
+  {"code":"fake_customer_service","name":"冒充客服","description":"冒充平台、快递、金融客服制造账户异常或理赔场景。","severity_default":"high"},
+  {"code":"romance_fraud","name":"杀猪盘/情感诱导","description":"通过情感关系诱导投资、借款或转账。","severity_default":"critical"},
+  {"code":"phishing_link","name":"钓鱼链接","description":"诱导点击链接、填写验证码、下载伪装 App。","severity_default":"high"},
+  {"code":"fake_part_time_job","name":"虚假兼职","description":"以兼职、日结、高额佣金诱导垫付或拉群。","severity_default":"medium"},
+  {"code":"ai_deepfake_fraud","name":"AI 换脸/拟声诈骗","description":"利用换脸、拟声或视频会议伪装熟人和领导。","severity_default":"critical"},
+  {"code":"loan_fraud","name":"虚假贷款","description":"以低息贷款为名收取保证金、解冻费或刷流水。","severity_default":"high"},
+  {"code":"gaming_trade_fraud","name":"游戏交易诈骗","description":"以账号、装备、点券私下交易诱导转账。","severity_default":"medium"},
+  {"code":"ticket_fraud","name":"票务/演唱会诈骗","description":"以稀缺票、内部票、转票为名要求私下付款。","severity_default":"medium"}
+]

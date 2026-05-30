@@ -1,0 +1,22 @@
+[
+  {"title":"匿名案例 01：冒充客服安全账户","category_code":"fake_customer_service","content":"某用户收到自称平台客服的消息，对方称账户异常，需要马上转账到安全账户验证。","summary":"冒充客服制造账户异常并要求转账。","risk_points":["账户异常","安全账户","紧迫感"],"tags":["客服","转账"],"source_type":"sample","anonymized":true},
+  {"title":"匿名案例 02：刷单返利垫付","category_code":"cashback_task","content":"某用户加入任务群后被要求先垫付完成刷单，承诺完成后返佣。","summary":"刷单任务要求垫付本金。","risk_points":["刷单","先垫付","返佣"],"tags":["刷单","兼职"],"source_type":"sample","anonymized":true},
+  {"title":"匿名案例 03：投资保证收益","category_code":"investment_fraud","content":"某投资群老师称内部项目保证收益、保本高收益，并要求下载陌生 App 充值。","summary":"虚假投资群诱导充值。","risk_points":["保证收益","内部名额","陌生 App"],"tags":["投资","群聊"],"source_type":"sample","anonymized":true},
+  {"title":"匿名案例 04：钓鱼链接验证","category_code":"phishing_link","content":"某用户收到短信称账户异常，要求点击示例链接完成验证并输入验证码。","summary":"钓鱼链接诱导输入验证码。","risk_points":["账户异常","点击链接验证","验证码"],"tags":["链接","验证码"],"source_type":"sample","anonymized":true},
+  {"title":"匿名案例 05：虚假贷款解冻费","category_code":"loan_fraud","content":"某贷款平台客服称银行卡填写错误导致资金冻结，需要支付账户解冻费。","summary":"虚假贷款收取解冻费用。","risk_points":["资金冻结","解冻费","贷前收费"],"tags":["贷款","解冻费"],"source_type":"sample","anonymized":true},
+  {"title":"匿名案例 06：情感诱导投资","category_code":"romance_fraud","content":"某网友建立恋爱关系后推荐投资平台，称自己有内部渠道并催促充值。","summary":"情感关系中诱导投资。","risk_points":["恋爱","投资","内部渠道"],"tags":["情感","投资"],"source_type":"sample","anonymized":true},
+  {"title":"匿名案例 07：AI 拟声领导转账","category_code":"ai_deepfake_fraud","content":"某员工接到声音很像领导的会议要求，对方称紧急付款需要先转账。","summary":"拟声冒充领导要求转账。","risk_points":["声音很像","领导","紧急转账"],"tags":["AI","领导"],"source_type":"sample","anonymized":true},
+  {"title":"匿名案例 08：游戏账号私下交易","category_code":"gaming_trade_fraud","content":"某玩家被引导绕过平台私下交易游戏账号，并先支付账号押金。","summary":"游戏交易押金诈骗。","risk_points":["私下交易","账号押金"],"tags":["游戏","押金"],"source_type":"sample","anonymized":true},
+  {"title":"匿名案例 09：演唱会内部票","category_code":"ticket_fraud","content":"某卖家声称有演唱会内部票，要求先付定金锁票，拒绝走官方平台。","summary":"内部票定金风险。","risk_points":["内部票","先付定金","平台外付款"],"tags":["票务","定金"],"source_type":"sample","anonymized":true},
+  {"title":"匿名案例 10：屏幕共享退款","category_code":"fake_customer_service","content":"自称商家客服的人要求某用户下载会议软件并开启屏幕共享办理退款。","summary":"屏幕共享泄露风险。","risk_points":["下载会议软件","屏幕共享","退款"],"tags":["退款","远控"],"source_type":"sample","anonymized":true},
+  {"title":"匿名案例 11：解除风控链接","category_code":"phishing_link","content":"对方称可以解除风控，但只能在指定链接提交身份和短信码。","summary":"绕开官方渠道提交验证码。","risk_points":["解除风控","指定链接","短信码"],"tags":["风控","链接"],"source_type":"sample","anonymized":true},
+  {"title":"匿名案例 12：兼职高额佣金","category_code":"fake_part_time_job","content":"兼职广告承诺轻松月入，高额佣金，但要求垫付任务金额。","summary":"虚假兼职诱导垫付。","risk_points":["高额佣金","兼职","垫付"],"tags":["兼职","佣金"],"source_type":"sample","anonymized":true},
+  {"title":"匿名案例 13：虚拟币搬砖套利","category_code":"investment_fraud","content":"群内导师介绍虚拟币搬砖套利，承诺稳赚不赔并要求向陌生钱包转币。","summary":"虚拟币套利诱导转币。","risk_points":["虚拟币搬砖","稳赚不赔","转币"],"tags":["虚拟币","投资"],"source_type":"sample","anonymized":true},
+  {"title":"匿名案例 14：冒充快递理赔","category_code":"fake_customer_service","content":"自称快递客服称包裹丢失可理赔，要求先验证账户并提供验证码。","summary":"理赔场景索要验证码。","risk_points":["冒充客服","理赔","验证码"],"tags":["快递","理赔"],"source_type":"sample","anonymized":true},
+  {"title":"匿名案例 15：不要告诉家人","category_code":"romance_fraud","content":"某网友以共同未来为由借款，并反复强调不要告诉家人。","summary":"要求保密并借款。","risk_points":["不要告诉家人","借款","情感诱导"],"tags":["情感","保密"],"source_type":"sample","anonymized":true},
+  {"title":"匿名案例 16：保证下款认证费","category_code":"loan_fraud","content":"贷款人员称百分百下款，但需要先支付认证费和流水包装费。","summary":"保证下款并收取贷前费用。","risk_points":["保证下款","认证费","贷前收费"],"tags":["贷款","认证费"],"source_type":"sample","anonymized":true},
+  {"title":"匿名案例 17：票务平台外付款","category_code":"ticket_fraud","content":"卖家让买家不要走平台，只能通过外部收款码付款后再出票。","summary":"票务交易绕开平台。","risk_points":["不要走平台","外部付款","出票"],"tags":["票务","私下交易"],"source_type":"sample","anonymized":true},
+  {"title":"匿名案例 18：视频会议财务指令","category_code":"ai_deepfake_fraud","content":"视频会议中出现疑似负责人影像，要求财务绕过审批紧急转账。","summary":"可疑视频会议绕过审批。","risk_points":["视频会议","负责人","紧急转账"],"tags":["AI","财务"],"source_type":"sample","anonymized":true},
+  {"title":"匿名案例 19：充值返现活动","category_code":"cashback_task","content":"活动群称充多少返多少，首次小额返现后引导继续充值。","summary":"充值返利诱导加码。","risk_points":["充值返现","返利","继续充值"],"tags":["返利","群聊"],"source_type":"sample","anonymized":true},
+  {"title":"匿名案例 20：游戏装备解冻","category_code":"gaming_trade_fraud","content":"交易员称游戏装备交易被冻结，需要支付解冻账号费用后才能放款。","summary":"游戏交易解冻费。","risk_points":["装备交易","解冻账号","费用"],"tags":["游戏","解冻"],"source_type":"sample","anonymized":true}
+]
