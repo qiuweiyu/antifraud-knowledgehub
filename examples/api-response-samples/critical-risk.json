@@ -1,0 +1,1 @@
+{"risk_score":100,"risk_level":"critical","matched_rules":[{"rule_code":"safe_account_transfer","rule_name":"安全账户转账","category_code":"fake_customer_service","weight":30,"severity":"critical","evidence":"安全账户","explanation":"安全账户是冒充公检法或客服诈骗中的典型话术。","recommendation":"不要向陌生账户转账，立即通过官方渠道核实。"}],"summary":"该文本命中多个可解释风险信号，请结合证据片段和建议动作谨慎处理。","recommendations":["不要向陌生账户转账，立即通过官方渠道核实。"]}

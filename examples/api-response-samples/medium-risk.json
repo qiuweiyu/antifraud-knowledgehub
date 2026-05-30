@@ -1,0 +1,1 @@
+{"risk_score":34,"risk_level":"medium","matched_rules":[{"rule_code":"limited_time","rule_name":"限时处理","category_code":"phishing_link","weight":15,"severity":"medium","evidence":"马上","explanation":"紧迫感会降低核验意愿。","recommendation":"停止操作，留出时间核实。"}],"summary":"该文本命中可解释风险信号，请谨慎处理。","recommendations":["停止操作，留出时间核实。"]}

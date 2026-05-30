@@ -1,0 +1,1 @@
+{"risk_score":68,"risk_level":"high","matched_rules":[{"rule_code":"guaranteed_profit","rule_name":"保证收益承诺","category_code":"investment_fraud","weight":24,"severity":"high","evidence":"保证收益","explanation":"投资场景中承诺保本高收益通常不可信。","recommendation":"警惕高收益承诺，不向不明平台充值。"}],"summary":"该文本存在较高诈骗风险。","recommendations":["警惕高收益承诺，不向不明平台充值。"]}
