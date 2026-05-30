@@ -1,0 +1,7 @@
+<svg width="320" height="120" viewBox="0 0 320 120" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="AntiFraud KnowledgeHub logo placeholder">
+  <rect width="320" height="120" rx="16" fill="#0f172a"/>
+  <path d="M54 28l34 12v22c0 20-13 32-34 42-21-10-34-22-34-42V40l34-12z" fill="#14b8a6"/>
+  <path d="M42 61l8 8 18-22" stroke="#fff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <text x="104" y="54" fill="#f8fafc" font-family="Arial, sans-serif" font-size="24" font-weight="700">AntiFraud</text>
+  <text x="104" y="82" fill="#94a3b8" font-family="Arial, sans-serif" font-size="18">KnowledgeHub</text>
+</svg>

@@ -1,0 +1,11 @@
+.env
+.env.local
+node_modules/
+dist/
+coverage/
+*.log
+tmp/
+*.exe
+backend/bin/
+frontend/dist/
+.DS_Store
