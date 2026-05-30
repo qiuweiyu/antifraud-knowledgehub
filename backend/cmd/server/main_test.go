@@ -9,8 +9,8 @@ import (
 
 	"github.com/antifraud-knowledgehub/antifraud-knowledgehub/backend/internal/config"
 	"github.com/antifraud-knowledgehub/antifraud-knowledgehub/backend/internal/database"
+	"github.com/glebarez/sqlite"
 	"go.uber.org/zap"
-	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
 

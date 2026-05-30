@@ -8,4 +8,7 @@ tmp/
 *.exe
 backend/bin/
 frontend/dist/
+frontend/*.tsbuildinfo
+frontend/*.js
+frontend/*.d.ts
 .DS_Store
