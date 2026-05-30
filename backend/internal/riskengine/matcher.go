@@ -24,6 +24,18 @@ func matchRules(text string, rules []Rule) []MatchedRule {
 func matchEvidence(text string, rule Rule) string {
 	switch rule.RuleType {
 	case "keyword", "pattern", "semantic_placeholder":
+		if rule.RuleType == "pattern" && strings.Contains(rule.Pattern, "+") {
+			parts := strings.Split(rule.Pattern, "+")
+			evidence := make([]string, 0, len(parts))
+			for _, part := range parts {
+				term := strings.TrimSpace(part)
+				if term == "" || !strings.Contains(text, term) {
+					return ""
+				}
+				evidence = append(evidence, term)
+			}
+			return strings.Join(evidence, " + ")
+		}
 		for _, part := range strings.Split(rule.Pattern, ",") {
 			term := strings.TrimSpace(part)
 			if term != "" && strings.Contains(text, term) {
