@@ -1,0 +1,63 @@
+:root {
+  color: #172033;
+  background: #f6f8fb;
+  font-family: Inter, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+}
+
+body { margin: 0; }
+
+.app-shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 260px 1fr;
+}
+
+.sidebar {
+  background: #121826;
+  color: #e5edf7;
+  padding: 24px 18px;
+}
+
+.brand { display: flex; gap: 12px; align-items: center; margin-bottom: 32px; }
+.brand-mark { width: 42px; height: 42px; border-radius: 8px; display: grid; place-items: center; background: #18a999; color: white; font-weight: 800; }
+.brand span { display: block; color: #9fb0c7; font-size: 13px; margin-top: 2px; }
+
+nav { display: grid; gap: 8px; }
+nav a { color: #b7c4d6; text-decoration: none; padding: 11px 12px; border-radius: 8px; font-weight: 600; }
+nav a.router-link-active, nav a:hover { background: #263244; color: #ffffff; }
+
+.content { padding: 28px; min-width: 0; }
+.topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 22px; gap: 16px; }
+.topbar h1 { margin: 0; font-size: 28px; color: #101828; }
+.topbar p { margin: 6px 0 0; color: #667085; }
+
+.grid { display: grid; gap: 16px; }
+.grid.cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.grid.cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.grid.cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+.panel, .metric, .case-card, .category-card {
+  background: #ffffff;
+  border: 1px solid #e4e7ec;
+  border-radius: 8px;
+  padding: 18px;
+  box-shadow: 0 8px 20px rgba(16, 24, 40, 0.04);
+}
+
+.metric strong { display: block; font-size: 28px; color: #0f766e; }
+.metric span { color: #667085; font-size: 14px; }
+.toolbar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; }
+.muted { color: #667085; }
+.risk-critical { color: #c2410c; }
+.risk-high { color: #dc2626; }
+.risk-medium { color: #b45309; }
+.risk-low { color: #047857; }
+
+@media (max-width: 900px) {
+  .app-shell { grid-template-columns: 1fr; }
+  .sidebar { position: static; }
+  nav { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .content { padding: 18px; }
+  .grid.cols-4, .grid.cols-3, .grid.cols-2 { grid-template-columns: 1fr; }
+  .topbar { align-items: flex-start; flex-direction: column; }
+}
