@@ -1,5 +1,7 @@
 # AntiFraud-KnowledgeHub
 
+> Project status: Early-stage MVP. The project is public, runnable locally, and actively maintained. Community contributions for anti-fraud rules, anonymized cases, documentation, and integrations are welcome.
+
 > AntiFraud-KnowledgeHub is an open-source knowledge base and explainable risk analysis toolkit for identifying online fraud patterns in Chinese-speaking scenarios.
 
 ![Logo placeholder](docs/assets/logo-placeholder.svg)
