@@ -12,9 +12,13 @@
 
 AntiFraud-KnowledgeHub 是一个面向中文互联网场景的反诈骗知识库与可解释风险识别平台。项目第一版聚焦可运行 MVP：结构化诈骗分类、规则引擎、匿名案例库、文本风险分析 API、Vue3 控制台和开发者 CLI。
 
+AntiFraud-KnowledgeHub is an anti-fraud knowledge base and explainable risk analysis platform designed for Chinese-speaking online scenarios. The first version focuses on a runnable MVP, including structured scam categories, a rule engine, an anonymized case library, a text risk analysis API, a Vue3 dashboard, and a developer CLI.
+
 ## Why
 
 在线诈骗话术变化快，但很多风险信号仍然可解释、可审计、可由社区维护。本项目希望提供一个 public-interest anti-fraud 工具，让开发者、研究者和公益团队可以基于开放规则库构建自己的风险提示能力。
+
+Online fraud tactics evolve quickly, but many risk signals are still explainable, auditable, and maintainable by the community. This project aims to provide a public-interest anti-fraud toolkit that enables developers, researchers, educators, and non-profit teams to build their own risk warning capabilities based on an open rule library.
 
 ## MVP Scope
 
