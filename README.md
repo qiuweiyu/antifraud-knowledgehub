@@ -4,9 +4,7 @@
 
 > AntiFraud-KnowledgeHub is an open-source knowledge base and explainable risk analysis toolkit for identifying online fraud patterns in Chinese-speaking scenarios.
 
-![Logo placeholder](docs/assets/logo-placeholder.svg)
-
-[![CI](https://img.shields.io/badge/CI-ready-blue)](#)
+[![CI](https://github.com/qiuweiyu/antifraud-knowledgehub/actions/workflows/ci.yml/badge.svg)](https://github.com/qiuweiyu/antifraud-knowledgehub/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Status](https://img.shields.io/badge/status-early--stage-orange)](#)
 
@@ -30,6 +28,8 @@ Online fraud tactics evolve quickly, but many risk signals are still explainable
 - Docker Compose startup for PostgreSQL, Redis, backend and frontend.
 
 ## Quick Start
+
+Docker Compose starts PostgreSQL, Redis, the Go API and the Vue dashboard:
 
 ```bash
 cp .env.example .env
@@ -55,6 +55,22 @@ Frontend: http://localhost:5173
 API docs: http://localhost:8080/swagger/index.html
 
 ## Local Development
+
+For local backend development without Docker, SQLite is supported as a
+lightweight database driver:
+
+```bash
+cd backend
+DATABASE_DRIVER=sqlite DATABASE_DSN=afkh-dev.db go run ./cmd/server
+```
+
+Then start the frontend in another terminal:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
 
 ```bash
 make backend-test
@@ -107,7 +123,11 @@ flowchart LR
 
 ## Screenshots
 
-See [docs/screenshots.md](docs/screenshots.md) for placeholders.
+Real screenshots captured from the runnable local MVP are available in
+[docs/screenshots.md](docs/screenshots.md).
+
+![Dashboard overview](docs/assets/screenshots/dashboard-overview.png)
+![Text risk analysis](docs/assets/screenshots/text-risk-analysis.png)
 
 ## Documentation
 

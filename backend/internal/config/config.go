@@ -9,6 +9,7 @@ import (
 type Config struct {
 	AppEnv           string
 	AppPort          string
+	DatabaseDriver   string
 	DatabaseDSN      string
 	RedisAddr        string
 	CORSAllowOrigins []string
@@ -18,6 +19,7 @@ func Load() Config {
 	return Config{
 		AppEnv:           getEnv("APP_ENV", "development"),
 		AppPort:          getEnv("APP_PORT", "8080"),
+		DatabaseDriver:   getEnv("DATABASE_DRIVER", "postgres"),
 		DatabaseDSN:      getEnv("DATABASE_DSN", "host=localhost user=postgres password=postgres dbname=antifraud port=5432 sslmode=disable TimeZone=Asia/Shanghai"),
 		RedisAddr:        getEnv("REDIS_ADDR", "localhost:6379"),
 		CORSAllowOrigins: splitEnv("CORS_ALLOW_ORIGINS", []string{"http://localhost:5173", "http://localhost:3000"}),

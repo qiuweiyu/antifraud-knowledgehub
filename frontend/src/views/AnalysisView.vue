@@ -29,11 +29,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
+import { useRoute } from 'vue-router'
 import { analysisApi } from '@/api/analysisApi'
 import type { AnalysisResult } from '@/types'
 
+const route = useRoute()
 const text = ref('客服说我的账户异常，需要马上转账到安全账户验证。')
 const loading = ref(false)
 const result = ref<AnalysisResult>()
@@ -54,4 +56,10 @@ async function copyJson() {
   await navigator.clipboard.writeText(JSON.stringify(result.value, null, 2))
   ElMessage.success('JSON 已复制')
 }
+
+onMounted(() => {
+  if (route.query.demo === '1') {
+    void analyze()
+  }
+})
 </script>
