@@ -2,6 +2,7 @@ package rule
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/antifraud-knowledgehub/antifraud-knowledgehub/backend/internal/database"
 	"github.com/antifraud-knowledgehub/antifraud-knowledgehub/backend/pkg/response"
@@ -29,6 +30,10 @@ func (h Handler) list(c *gin.Context) {
 	}
 	if severity := c.Query("severity"); severity != "" {
 		q = q.Where("severity = ?", severity)
+	}
+	if keyword := strings.TrimSpace(c.Query("q")); keyword != "" {
+		like := "%" + strings.ToLower(keyword) + "%"
+		q = q.Where("LOWER(name) LIKE ? OR LOWER(description) LIKE ? OR LOWER(pattern) LIKE ?", like, like, like)
 	}
 	q.Find(&items)
 	response.OK(c, items)

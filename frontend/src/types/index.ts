@@ -52,6 +52,23 @@ export interface AnalysisResult {
   recommendations: string[]
 }
 
+export interface CategoryDistribution {
+  category_code: string
+  category_name: string
+  rule_count: number
+  case_count: number
+}
+
+export interface AnalysisStats {
+  categories: number
+  rules: number
+  enabled_rules: number
+  cases: number
+  analysis_records: number
+  risk_level_distribution: Record<string, number>
+  category_distribution: CategoryDistribution[]
+}
+
 export interface ApiEnvelope<T> {
   success: boolean
   data: T

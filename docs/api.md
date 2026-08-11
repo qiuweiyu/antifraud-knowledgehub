@@ -20,7 +20,7 @@ Base path: `/api/v1`
 
 ## Rules
 
-- `GET /rules`
+- `GET /rules?q=&category_code=&severity=`
 - `POST /rules`
 - `GET /rules/{id}`
 - `PUT /rules/{id}`
@@ -29,7 +29,7 @@ Base path: `/api/v1`
 
 ## Cases
 
-- `GET /cases`
+- `GET /cases?q=&category_code=`
 - `POST /cases`
 - `GET /cases/{id}`
 - `PUT /cases/{id}`
@@ -44,6 +44,12 @@ Base path: `/api/v1`
 ```
 
 The response includes `risk_score`, `risk_level`, `matched_rules`, `summary` and `recommendations`.
+
+## Analysis Stats
+
+`GET /analysis/stats`
+
+Returns aggregate counts for categories, rules, enabled rules, anonymous cases, analysis records, risk-level buckets and category coverage. The dashboard overview page uses this endpoint instead of loading every rule and case just to calculate counts.
 
 ## Response Envelope
 

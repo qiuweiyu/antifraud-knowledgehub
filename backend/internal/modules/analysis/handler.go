@@ -18,10 +18,28 @@ type AnalyzeRequest struct {
 	Text string `json:"text" binding:"required"`
 }
 
+type StatsResponse struct {
+	Categories            int64                  `json:"categories"`
+	Rules                 int64                  `json:"rules"`
+	EnabledRules          int64                  `json:"enabled_rules"`
+	Cases                 int64                  `json:"cases"`
+	AnalysisRecords       int64                  `json:"analysis_records"`
+	RiskLevelDistribution map[string]int64       `json:"risk_level_distribution"`
+	CategoryDistribution  []CategoryDistribution `json:"category_distribution"`
+}
+
+type CategoryDistribution struct {
+	CategoryCode string `json:"category_code"`
+	CategoryName string `json:"category_name"`
+	RuleCount    int64  `json:"rule_count"`
+	CaseCount    int64  `json:"case_count"`
+}
+
 func Register(r gin.IRoutes, db *gorm.DB) {
 	h := Handler{db: db}
 	r.POST("/analysis/text", h.analyze)
 	r.GET("/analysis/recent", h.recent)
+	r.GET("/analysis/stats", h.stats)
 }
 
 func (h Handler) analyze(c *gin.Context) {
@@ -54,4 +72,44 @@ func (h Handler) recent(c *gin.Context) {
 	var count int64
 	h.db.Model(&database.AnalysisRecord{}).Count(&count)
 	response.OK(c, gin.H{"count": count})
+}
+
+func (h Handler) stats(c *gin.Context) {
+	var result StatsResponse
+	h.db.Model(&database.Category{}).Count(&result.Categories)
+	h.db.Model(&database.RiskRule{}).Count(&result.Rules)
+	h.db.Model(&database.RiskRule{}).Where("enabled = ?", true).Count(&result.EnabledRules)
+	h.db.Model(&database.ScamCase{}).Count(&result.Cases)
+	h.db.Model(&database.AnalysisRecord{}).Count(&result.AnalysisRecords)
+	result.RiskLevelDistribution = map[string]int64{"low": 0, "medium": 0, "high": 0, "critical": 0}
+
+	var levels []struct {
+		RiskLevel string
+		Count     int64
+	}
+	h.db.Model(&database.AnalysisRecord{}).
+		Select("risk_level, count(*) as count").
+		Group("risk_level").
+		Scan(&levels)
+	for _, item := range levels {
+		result.RiskLevelDistribution[item.RiskLevel] = item.Count
+	}
+
+	var categories []database.Category
+	h.db.Order("id asc").Find(&categories)
+	result.CategoryDistribution = make([]CategoryDistribution, 0, len(categories))
+	for _, category := range categories {
+		var ruleCount int64
+		var caseCount int64
+		h.db.Model(&database.RiskRule{}).Where("category_code = ?", category.Code).Count(&ruleCount)
+		h.db.Model(&database.ScamCase{}).Where("category_code = ?", category.Code).Count(&caseCount)
+		result.CategoryDistribution = append(result.CategoryDistribution, CategoryDistribution{
+			CategoryCode: category.Code,
+			CategoryName: category.Name,
+			RuleCount:    ruleCount,
+			CaseCount:    caseCount,
+		})
+	}
+
+	response.OK(c, result)
 }
