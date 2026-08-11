@@ -2,6 +2,7 @@ package caseitem
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/antifraud-knowledgehub/antifraud-knowledgehub/backend/internal/database"
 	"github.com/antifraud-knowledgehub/antifraud-knowledgehub/backend/pkg/response"
@@ -25,6 +26,10 @@ func (h Handler) list(c *gin.Context) {
 	q := h.db.Order("id asc")
 	if category := c.Query("category_code"); category != "" {
 		q = q.Where("category_code = ?", category)
+	}
+	if keyword := strings.TrimSpace(c.Query("q")); keyword != "" {
+		like := "%" + strings.ToLower(keyword) + "%"
+		q = q.Where("LOWER(title) LIKE ? OR LOWER(content) LIKE ? OR LOWER(summary) LIKE ?", like, like, like)
 	}
 	q.Find(&items)
 	response.OK(c, items)

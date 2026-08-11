@@ -1,6 +1,12 @@
 import { client, unwrap } from './client'
 import type { RiskRule } from '@/types'
 
+export interface RuleListParams {
+  q?: string
+  category_code?: string
+  severity?: string
+}
+
 export const ruleApi = {
-  list: () => unwrap<RiskRule[]>(client.get('/rules'))
+  list: (params?: RuleListParams) => unwrap<RiskRule[]>(client.get('/rules', { params }))
 }
