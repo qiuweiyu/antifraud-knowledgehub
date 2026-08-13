@@ -51,4 +51,6 @@ npm run build
 
 Risk rules should be explainable, auditable, and tied to concrete public-safety signals. Include a short explanation, severity rationale, and one anonymized example when practical.
 
+Contributors can validate a rule draft before submission with `POST /api/v1/rules/validate`.
+
 Case contributions must be synthetic or fully anonymized. Prefer short, structured examples that demonstrate a tactic without preserving real-world identifiers.
