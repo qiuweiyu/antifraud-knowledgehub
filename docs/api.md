@@ -21,11 +21,46 @@ Base path: `/api/v1`
 ## Rules
 
 - `GET /rules?q=&category_code=&severity=`
+- `POST /rules/validate`
 - `POST /rules`
 - `GET /rules/{id}`
 - `PUT /rules/{id}`
 - `PATCH /rules/{id}/toggle`
 - `DELETE /rules/{id}`
+
+### Validate Rule Draft
+
+`POST /api/v1/rules/validate`
+
+Validates a rule draft before it is saved. This endpoint does not create a
+`RiskRule` record and has no database write side effects.
+
+Request:
+
+```json
+{
+  "code": "community_safe_channel",
+  "name": "Official channel check",
+  "category_code": "fake_customer_service",
+  "rule_type": "keyword",
+  "pattern": "official channel",
+  "weight": 20,
+  "severity": "medium"
+}
+```
+
+Response:
+
+```json
+{
+  "success": true,
+  "data": {
+    "valid": true,
+    "errors": [],
+    "warnings": []
+  }
+}
+```
 
 ## Cases
 

@@ -15,6 +15,7 @@ type Handler struct{ db *gorm.DB }
 func Register(r gin.IRoutes, db *gorm.DB) {
 	h := Handler{db: db}
 	r.GET("/rules", h.list)
+	r.POST("/rules/validate", h.validate)
 	r.POST("/rules", h.create)
 	r.GET("/rules/:id", h.get)
 	r.PUT("/rules/:id", h.update)
@@ -40,16 +41,31 @@ func (h Handler) list(c *gin.Context) {
 }
 
 func (h Handler) create(c *gin.Context) {
-	var item database.RiskRule
-	if err := c.ShouldBindJSON(&item); err != nil || item.Code == "" || item.Pattern == "" {
-		response.Fail(c, http.StatusBadRequest, "invalid_rule", "code and pattern are required")
+	var draft DraftRequest
+	if err := c.ShouldBindJSON(&draft); err != nil {
+		response.Fail(c, http.StatusBadRequest, "invalid_rule", err.Error())
 		return
 	}
+	result := ValidateDraft(h.db, draft)
+	if !result.Valid {
+		response.Fail(c, http.StatusBadRequest, "invalid_rule", result.Errors[0].Message)
+		return
+	}
+	item := draft.riskRule()
 	if err := h.db.Create(&item).Error; err != nil {
 		response.Fail(c, http.StatusConflict, "rule_create_failed", err.Error())
 		return
 	}
 	response.Created(c, item)
+}
+
+func (h Handler) validate(c *gin.Context) {
+	var draft DraftRequest
+	if err := c.ShouldBindJSON(&draft); err != nil {
+		response.Fail(c, http.StatusBadRequest, "invalid_rule", err.Error())
+		return
+	}
+	response.OK(c, ValidateDraft(h.db, draft))
 }
 
 func (h Handler) get(c *gin.Context) {
