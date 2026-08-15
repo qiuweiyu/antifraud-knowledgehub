@@ -135,6 +135,7 @@ Real screenshots captured from the runnable local MVP are available in
 - [API](docs/api.md)
 - [Data schema](docs/data-schema.md)
 - [Risk engine](docs/risk-engine.md)
+- [Rule contribution format](docs/rule-contribution-format.md)
 - [Roadmap](docs/roadmap.md)
 
 ## Contributing
