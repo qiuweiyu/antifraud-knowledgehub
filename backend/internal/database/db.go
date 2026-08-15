@@ -27,7 +27,7 @@ func Connect(cfg config.Config) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := db.AutoMigrate(&Category{}, &RiskRule{}, &ScamCase{}, &AnalysisRecord{}); err != nil {
+	if err := db.AutoMigrate(&Category{}, &RiskRule{}, &RuleSubmission{}, &ScamCase{}, &AnalysisRecord{}); err != nil {
 		return nil, err
 	}
 	rdb := redis.NewClient(&redis.Options{Addr: cfg.RedisAddr})
