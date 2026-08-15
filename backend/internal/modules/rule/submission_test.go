@@ -1,6 +1,7 @@
 package rule
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/antifraud-knowledgehub/antifraud-knowledgehub/backend/internal/database"
@@ -129,6 +130,127 @@ func TestPendingSubmissionCodeIsNotUnique(t *testing.T) {
 	if count != 2 {
 		t.Fatalf("expected two pending submissions with same code, got %d", count)
 	}
+}
+
+func TestListPendingSubmissionsFiltersOrdersAndDoesNotWrite(t *testing.T) {
+	db := submissionTestDB(t)
+	first := createPendingSubmissionForTest(t, db, "inspect_first")
+	second := createPendingSubmissionForTest(t, db, "inspect_second")
+	createNonPendingSubmissionForTest(t, db, "hidden_non_pending")
+
+	beforeSubmissions := countSubmissionRows(t, db)
+	beforeRules := countRiskRuleRows(t, db)
+
+	items, err := ListPendingSubmissions(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 2 {
+		t.Fatalf("expected two pending submissions, got %d: %+v", len(items), items)
+	}
+	if items[0].ID != first.ID || items[1].ID != second.ID {
+		t.Fatalf("expected deterministic oldest-first ordering, got IDs %d, %d", items[0].ID, items[1].ID)
+	}
+	for _, item := range items {
+		if item.Status != PendingSubmissionStatus {
+			t.Fatalf("list must contain only pending submissions: %+v", item)
+		}
+	}
+
+	if got := countSubmissionRows(t, db); got != beforeSubmissions {
+		t.Fatalf("list must not modify submissions: before=%d after=%d", beforeSubmissions, got)
+	}
+	if got := countRiskRuleRows(t, db); got != beforeRules {
+		t.Fatalf("list must not modify RiskRule rows: before=%d after=%d", beforeRules, got)
+	}
+}
+
+func TestGetPendingSubmissionFiltersStatusAndDoesNotWrite(t *testing.T) {
+	db := submissionTestDB(t)
+	pending := createPendingSubmissionForTest(t, db, "inspect_one")
+	nonPending := createNonPendingSubmissionForTest(t, db, "hidden_one")
+
+	beforeSubmissions := countSubmissionRows(t, db)
+	beforeRules := countRiskRuleRows(t, db)
+
+	got, err := GetPendingSubmission(db, pending.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ID != pending.ID || got.Status != PendingSubmissionStatus {
+		t.Fatalf("unexpected pending submission: %+v", got)
+	}
+
+	if _, err := GetPendingSubmission(db, nonPending.ID); !errors.Is(err, gorm.ErrRecordNotFound) {
+		t.Fatalf("expected non-pending submission to be hidden, got %v", err)
+	}
+	if _, err := GetPendingSubmission(db, 999999); !errors.Is(err, gorm.ErrRecordNotFound) {
+		t.Fatalf("expected missing submission to return record not found, got %v", err)
+	}
+
+	if got := countSubmissionRows(t, db); got != beforeSubmissions {
+		t.Fatalf("get must not modify submissions: before=%d after=%d", beforeSubmissions, got)
+	}
+	if got := countRiskRuleRows(t, db); got != beforeRules {
+		t.Fatalf("get must not modify RiskRule rows: before=%d after=%d", beforeRules, got)
+	}
+}
+
+func createPendingSubmissionForTest(t *testing.T, db *gorm.DB, code string) database.RuleSubmission {
+	t.Helper()
+	submission, result, err := CreatePendingSubmission(db, DraftRequest{
+		Code:         code,
+		Name:         code,
+		CategoryCode: "fake_customer_service",
+		RuleType:     "keyword",
+		Pattern:      "synthetic inspection signal",
+		Weight:       20,
+		Severity:     "medium",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Valid {
+		t.Fatalf("expected valid test draft: %+v", result.Errors)
+	}
+	return submission
+}
+
+func createNonPendingSubmissionForTest(t *testing.T, db *gorm.DB, code string) database.RuleSubmission {
+	t.Helper()
+	item := database.RuleSubmission{
+		Status:       "reviewed_test_fixture",
+		Code:         code,
+		Name:         code,
+		CategoryCode: "fake_customer_service",
+		RuleType:     "keyword",
+		Pattern:      "synthetic hidden signal",
+		Weight:       20,
+		Severity:     "medium",
+		Enabled:      true,
+	}
+	if err := db.Create(&item).Error; err != nil {
+		t.Fatal(err)
+	}
+	return item
+}
+
+func countSubmissionRows(t *testing.T, db *gorm.DB) int64 {
+	t.Helper()
+	var count int64
+	if err := db.Model(&database.RuleSubmission{}).Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	return count
+}
+
+func countRiskRuleRows(t *testing.T, db *gorm.DB) int64 {
+	t.Helper()
+	var count int64
+	if err := db.Model(&database.RiskRule{}).Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	return count
 }
 
 func submissionTestDB(t *testing.T) *gorm.DB {
