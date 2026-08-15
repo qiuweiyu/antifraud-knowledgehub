@@ -6,6 +6,8 @@ The goal is to make rule contributions consistent, auditable, safe to publish, a
 
 > Scope: this format currently targets **new rule drafts**. It does not define community accounts, submission persistence, reviewer roles, approval states, or rule versioning.
 
+The bounded design for the next persistence step is documented in [Minimal Rule Submission Persistence Design](rule-submission-persistence-design.md). That design keeps pending submissions separate from executable `RiskRule` records and does not introduce a public write API yet.
+
 ## Where rules live today
 
 The current seed rule set is stored in:
