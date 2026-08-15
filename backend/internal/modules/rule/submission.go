@@ -34,3 +34,25 @@ func CreatePendingSubmission(db *gorm.DB, draft DraftRequest) (database.RuleSubm
 	}
 	return submission, result, nil
 }
+
+func ListPendingSubmissions(db *gorm.DB) ([]database.RuleSubmission, error) {
+	var submissions []database.RuleSubmission
+	if err := db.
+		Where("status = ?", PendingSubmissionStatus).
+		Order("created_at asc").
+		Order("id asc").
+		Find(&submissions).Error; err != nil {
+		return nil, err
+	}
+	return submissions, nil
+}
+
+func GetPendingSubmission(db *gorm.DB, id uint) (database.RuleSubmission, error) {
+	var submission database.RuleSubmission
+	if err := db.
+		Where("id = ? AND status = ?", id, PendingSubmissionStatus).
+		First(&submission).Error; err != nil {
+		return database.RuleSubmission{}, err
+	}
+	return submission, nil
+}
