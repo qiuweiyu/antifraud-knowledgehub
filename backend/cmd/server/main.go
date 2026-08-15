@@ -26,6 +26,9 @@ func main() {
 	flag.Parse()
 
 	cfg := config.Load()
+	if err := cfg.Validate(); err != nil {
+		log.Fatalf("configuration invalid: %v", err)
+	}
 	logger, _ := zap.NewProduction()
 	if !cfg.IsProduction() {
 		logger, _ = zap.NewDevelopment()
