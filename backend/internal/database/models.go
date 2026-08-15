@@ -33,6 +33,24 @@ type RiskRule struct {
 	UpdatedAt      time.Time `json:"updated_at"`
 }
 
+type RuleSubmission struct {
+	ID             uint      `json:"id" gorm:"primaryKey"`
+	Status         string    `json:"status" gorm:"index;size:32;not null;default:pending"`
+	Code           string    `json:"code" gorm:"index;size:120;not null"`
+	Name           string    `json:"name" gorm:"size:180;not null"`
+	Description    string    `json:"description"`
+	CategoryCode   string    `json:"category_code" gorm:"index;size:100;not null"`
+	RuleType       string    `json:"rule_type" gorm:"size:40;not null"`
+	Pattern        string    `json:"pattern" gorm:"not null"`
+	Weight         int       `json:"weight" gorm:"not null"`
+	Severity       string    `json:"severity" gorm:"size:40;not null"`
+	Enabled        bool      `json:"enabled" gorm:"not null"`
+	Explanation    string    `json:"explanation"`
+	Recommendation string    `json:"recommendation"`
+	CreatedAt      time.Time `json:"created_at" gorm:"index"`
+	UpdatedAt      time.Time `json:"updated_at"`
+}
+
 type ScamCase struct {
 	ID           uint           `json:"id" gorm:"primaryKey"`
 	Title        string         `json:"title" gorm:"size:220;not null"`
