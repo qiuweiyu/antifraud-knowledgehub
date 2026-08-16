@@ -48,6 +48,15 @@ func validSubmissionDraftJSON(t *testing.T) []byte {
 	return body
 }
 
+func marshalSubmissionJSON(t *testing.T, value any) []byte {
+	t.Helper()
+	body, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return body
+}
+
 func serveSubmissionHandler(db *gorm.DB, contentType string, body []byte) *httptest.ResponseRecorder {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
@@ -95,8 +104,10 @@ func TestSubmissionCreateHandlerCreatesOnePendingSubmission(t *testing.T) {
 
 func TestSubmissionCreateHandlerRejectsInvalidDraftWithoutWrites(t *testing.T) {
 	db := newSubmissionHandlerTestDB(t)
-	body := []byte(`{"code":"bad-category","name":"Bad category","category_code":"missing","rule_type":"keyword","pattern":"synthetic","weight":10,"severity":"low"}`)
-	body = bytes.ReplaceAll(body, []byte(`\"`), []byte(`"`))
+	body := marshalSubmissionJSON(t, map[string]any{
+		"code": "bad-category", "name": "Bad category", "category_code": "missing",
+		"rule_type": "keyword", "pattern": "synthetic", "weight": 10, "severity": "low",
+	})
 	resp := serveSubmissionHandler(db, "application/json", body)
 	if resp.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d: %s", resp.Code, resp.Body.String())
@@ -115,8 +126,7 @@ func TestSubmissionCreateHandlerRejectsUnsupportedContentTypeWithoutWrites(t *te
 
 func TestSubmissionCreateHandlerRejectsOversizedBodyWithoutWrites(t *testing.T) {
 	db := newSubmissionHandlerTestDB(t)
-	body := []byte(`{"code":"` + strings.Repeat("a", int(MaxSubmissionRequestBodyBytes)) + `"}`)
-	body = bytes.ReplaceAll(body, []byte(`\"`), []byte(`"`))
+	body := []byte("{\"code\":\"" + strings.Repeat("a", int(MaxSubmissionRequestBodyBytes)) + "\"}")
 	resp := serveSubmissionHandler(db, "application/json", body)
 	if resp.Code != http.StatusRequestEntityTooLarge {
 		t.Fatalf("expected 413, got %d: %s", resp.Code, resp.Body.String())
@@ -126,7 +136,7 @@ func TestSubmissionCreateHandlerRejectsOversizedBodyWithoutWrites(t *testing.T) 
 
 func TestSubmissionCreateHandlerRejectsMalformedJSONWithoutWrites(t *testing.T) {
 	db := newSubmissionHandlerTestDB(t)
-	resp := serveSubmissionHandler(db, "application/json", []byte(`{"code":`))
+	resp := serveSubmissionHandler(db, "application/json", []byte("{\"code\":"))
 	if resp.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", resp.Code)
 	}
@@ -135,8 +145,11 @@ func TestSubmissionCreateHandlerRejectsMalformedJSONWithoutWrites(t *testing.T) 
 
 func TestSubmissionCreateHandlerRejectsUnknownFieldWithoutWrites(t *testing.T) {
 	db := newSubmissionHandlerTestDB(t)
-	body := []byte(`{"code":"synthetic","name":"Synthetic","category_code":"fake_customer_service","rule_type":"keyword","pattern":"synthetic","weight":10,"severity":"low","unexpected":"reject-me"}`)
-	body = bytes.ReplaceAll(body, []byte(`\"`), []byte(`"`))
+	body := marshalSubmissionJSON(t, map[string]any{
+		"code": "synthetic", "name": "Synthetic", "category_code": "fake_customer_service",
+		"rule_type": "keyword", "pattern": "synthetic", "weight": 10, "severity": "low",
+		"unexpected": "reject-me",
+	})
 	resp := serveSubmissionHandler(db, "application/json", body)
 	if resp.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d: %s", resp.Code, resp.Body.String())
@@ -146,8 +159,7 @@ func TestSubmissionCreateHandlerRejectsUnknownFieldWithoutWrites(t *testing.T) {
 
 func TestSubmissionCreateHandlerRejectsTrailingJSONWithoutWrites(t *testing.T) {
 	db := newSubmissionHandlerTestDB(t)
-	body := append(validSubmissionDraftJSON(t), []byte(` {"second":true}`)...)
-	body = bytes.ReplaceAll(body, []byte(`\"`), []byte(`"`))
+	body := append(validSubmissionDraftJSON(t), []byte(" {\"second\":true}")...)
 	resp := serveSubmissionHandler(db, "application/json", body)
 	if resp.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d: %s", resp.Code, resp.Body.String())
