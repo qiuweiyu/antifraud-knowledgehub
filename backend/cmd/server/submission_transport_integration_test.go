@@ -98,7 +98,7 @@ func TestControlledSubmissionTransportIntegrationCreatesPendingAndRateLimits(t *
 		t.Fatalf("valid submission: expected 201, got %d: %s", created.Code, created.Body.String())
 	}
 	assertSubmissionTransportWrites(t, db, 1, 0)
-	if !strings.Contains(created.Body.String(), `"status":"pending"`) {
+	if !strings.Contains(created.Body.String(), "\"status\":\"pending\"") {
 		t.Fatalf("created response must expose server-assigned pending status: %s", created.Body.String())
 	}
 
