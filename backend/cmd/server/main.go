@@ -66,6 +66,24 @@ func newRouter(cfg config.Config, logger *zap.Logger, store *database.Store) *gi
 	rule.Register(v1, store.DB)
 	caseitem.Register(v1, store.DB)
 	analysis.Register(v1, store.DB)
+
+	if cfg.RuleSubmissionsEnabled {
+		v1.POST(
+			"/rule-submissions",
+			middleware.SubmissionWriteAuthorization(cfg.RuleSubmissionWriteToken),
+			middleware.SubmissionWriteRateLimit(
+				middleware.RedisSubmissionRateBackend{Client: store.Redis},
+				cfg.RuleSubmissionWriteToken,
+				middleware.SubmissionRateConfig{
+					CredentialLimit: cfg.RuleSubmissionCredentialLimit,
+					GlobalLimit:     cfg.RuleSubmissionGlobalLimit,
+					Window:          cfg.RuleSubmissionRateWindow,
+				},
+			),
+			rule.SubmissionCreateHandler(store.DB),
+		)
+	}
+
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 	return r
 }

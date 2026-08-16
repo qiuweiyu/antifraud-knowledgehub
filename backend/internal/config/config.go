@@ -5,31 +5,43 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
-const minSubmissionWriteTokenLength = 32
+const (
+	minSubmissionWriteTokenLength          = 32
+	defaultSubmissionCredentialLimit int64 = 5
+	defaultSubmissionGlobalLimit     int64 = 50
+	defaultSubmissionRateWindow            = 10 * time.Minute
+)
 
 type Config struct {
-	AppEnv                   string
-	AppPort                  string
-	DatabaseDriver           string
-	DatabaseDSN              string
-	RedisAddr                string
-	CORSAllowOrigins         []string
-	RuleSubmissionsEnabled   bool
-	RuleSubmissionWriteToken string
+	AppEnv                        string
+	AppPort                       string
+	DatabaseDriver                string
+	DatabaseDSN                   string
+	RedisAddr                     string
+	CORSAllowOrigins              []string
+	RuleSubmissionsEnabled        bool
+	RuleSubmissionWriteToken      string
+	RuleSubmissionCredentialLimit int64
+	RuleSubmissionGlobalLimit     int64
+	RuleSubmissionRateWindow      time.Duration
 }
 
 func Load() Config {
 	return Config{
-		AppEnv:                   getEnv("APP_ENV", "development"),
-		AppPort:                  getEnv("APP_PORT", "8080"),
-		DatabaseDriver:           getEnv("DATABASE_DRIVER", "postgres"),
-		DatabaseDSN:              getEnv("DATABASE_DSN", "host=localhost user=postgres password=postgres dbname=antifraud port=5432 sslmode=disable TimeZone=Asia/Shanghai"),
-		RedisAddr:                getEnv("REDIS_ADDR", "localhost:6379"),
-		CORSAllowOrigins:         splitEnv("CORS_ALLOW_ORIGINS", []string{"http://localhost:5173", "http://localhost:3000"}),
-		RuleSubmissionsEnabled:   boolEnv("RULE_SUBMISSIONS_ENABLED"),
-		RuleSubmissionWriteToken: os.Getenv("RULE_SUBMISSION_WRITE_TOKEN"),
+		AppEnv:                        getEnv("APP_ENV", "development"),
+		AppPort:                       getEnv("APP_PORT", "8080"),
+		DatabaseDriver:                getEnv("DATABASE_DRIVER", "postgres"),
+		DatabaseDSN:                   getEnv("DATABASE_DSN", "host=localhost user=postgres password=postgres dbname=antifraud port=5432 sslmode=disable TimeZone=Asia/Shanghai"),
+		RedisAddr:                     getEnv("REDIS_ADDR", "localhost:6379"),
+		CORSAllowOrigins:              splitEnv("CORS_ALLOW_ORIGINS", []string{"http://localhost:5173", "http://localhost:3000"}),
+		RuleSubmissionsEnabled:        boolEnv("RULE_SUBMISSIONS_ENABLED"),
+		RuleSubmissionWriteToken:      os.Getenv("RULE_SUBMISSION_WRITE_TOKEN"),
+		RuleSubmissionCredentialLimit: int64Env("RULE_SUBMISSION_CREDENTIAL_LIMIT", defaultSubmissionCredentialLimit),
+		RuleSubmissionGlobalLimit:     int64Env("RULE_SUBMISSION_GLOBAL_LIMIT", defaultSubmissionGlobalLimit),
+		RuleSubmissionRateWindow:      durationEnv("RULE_SUBMISSION_RATE_WINDOW", defaultSubmissionRateWindow),
 	}
 }
 
@@ -42,6 +54,18 @@ func (c Config) Validate() error {
 	}
 	if len(c.RuleSubmissionWriteToken) < minSubmissionWriteTokenLength {
 		return fmt.Errorf("RULE_SUBMISSION_WRITE_TOKEN must be at least %d characters when rule submissions are enabled", minSubmissionWriteTokenLength)
+	}
+	if c.RuleSubmissionCredentialLimit <= 0 {
+		return fmt.Errorf("RULE_SUBMISSION_CREDENTIAL_LIMIT must be positive when rule submissions are enabled")
+	}
+	if c.RuleSubmissionGlobalLimit <= 0 {
+		return fmt.Errorf("RULE_SUBMISSION_GLOBAL_LIMIT must be positive when rule submissions are enabled")
+	}
+	if c.RuleSubmissionGlobalLimit < c.RuleSubmissionCredentialLimit {
+		return fmt.Errorf("RULE_SUBMISSION_GLOBAL_LIMIT must be greater than or equal to RULE_SUBMISSION_CREDENTIAL_LIMIT")
+	}
+	if c.RuleSubmissionRateWindow < time.Millisecond {
+		return fmt.Errorf("RULE_SUBMISSION_RATE_WINDOW must be at least 1ms when rule submissions are enabled")
 	}
 	return nil
 }
@@ -75,6 +99,30 @@ func boolEnv(key string) bool {
 		return false
 	}
 	return enabled
+}
+
+func int64Env(key string, fallback int64) int64 {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.ParseInt(value, 10, 64)
+	if err != nil {
+		return -1
+	}
+	return parsed
+}
+
+func durationEnv(key string, fallback time.Duration) time.Duration {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return fallback
+	}
+	parsed, err := time.ParseDuration(value)
+	if err != nil {
+		return 0
+	}
+	return parsed
 }
 
 func splitEnv(key string, fallback []string) []string {

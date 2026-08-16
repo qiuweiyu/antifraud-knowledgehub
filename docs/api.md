@@ -62,6 +62,50 @@ Response:
 }
 ```
 
+## Controlled Rule Submissions
+
+`POST /api/v1/rule-submissions`
+
+This endpoint is a controlled maintainer transport, not anonymous public community access. It is registered only when `RULE_SUBMISSIONS_ENABLED=true` and the submission transport configuration is valid.
+
+Requirements:
+
+- `Authorization: Bearer <RULE_SUBMISSION_WRITE_TOKEN>`
+- `Content-Type: application/json`
+- request body no larger than 32 KiB
+- JSON must contain only fields supported by the existing rule `DraftRequest`
+- Redis-backed per-credential and global rate limits must be available
+
+The handler always delegates persistence to `CreatePendingSubmission`, so a successful request creates one non-executable `RuleSubmission` with server-assigned status `pending`. It never creates or modifies a `RiskRule`.
+
+Example request:
+
+```json
+{
+  "code": "community_safe_account_request",
+  "name": "Safe account transfer request",
+  "category_code": "fake_customer_service",
+  "rule_type": "keyword",
+  "pattern": "安全账户",
+  "weight": 40,
+  "severity": "high",
+  "explanation": "Synthetic anti-fraud example.",
+  "recommendation": "Verify the request independently before transferring funds."
+}
+```
+
+Important response statuses:
+
+- `201` — one pending submission created
+- `400` — malformed JSON, unknown fields, trailing JSON, or invalid rule draft
+- `401` — missing or invalid controlled write credential
+- `413` — request body exceeds 32 KiB
+- `415` — unsupported content type
+- `429` — submission rate limit exceeded
+- `503` — Redis/rate-limiter protection cannot be evaluated
+
+The route is intentionally unavailable when the feature flag is disabled. Credentials and raw submission bodies must not be logged.
+
 ## Cases
 
 - `GET /cases?q=&category_code=`
