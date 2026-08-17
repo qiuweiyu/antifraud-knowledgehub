@@ -29,8 +29,8 @@ type legacyRuleSubmission struct {
 
 func (legacyRuleSubmission) TableName() string { return "rule_submissions" }
 
-func TestRuleSubmissionDraftDigestKnownV1Fixture(t *testing.T) {
-	digest, err := RuleSubmissionDraftDigest(RuleSubmission{
+func digestFixtureSubmission() RuleSubmission {
+	return RuleSubmission{
 		Code:           "fixture_code",
 		Name:           "Fixture Name",
 		Description:    "Fixture description",
@@ -42,7 +42,11 @@ func TestRuleSubmissionDraftDigestKnownV1Fixture(t *testing.T) {
 		Enabled:        true,
 		Explanation:    "Fixture explanation",
 		Recommendation: "Fixture recommendation",
-	})
+	}
+}
+
+func TestRuleSubmissionDraftDigestKnownV1Fixture(t *testing.T) {
+	digest, err := RuleSubmissionDraftDigest(digestFixtureSubmission())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,6 +56,63 @@ func TestRuleSubmissionDraftDigestKnownV1Fixture(t *testing.T) {
 	}
 	if len(digest) != 64 || digest != strings.ToLower(digest) {
 		t.Fatalf("digest must be 64 lowercase hex characters: %q", digest)
+	}
+}
+
+func TestRuleSubmissionDraftDigestChangesForEveryPersistedDraftField(t *testing.T) {
+	base := digestFixtureSubmission()
+	baseDigest, err := RuleSubmissionDraftDigest(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cases := map[string]func(*RuleSubmission){
+		"code":           func(v *RuleSubmission) { v.Code += "_changed" },
+		"name":           func(v *RuleSubmission) { v.Name += " changed" },
+		"description":    func(v *RuleSubmission) { v.Description += " changed" },
+		"category_code":  func(v *RuleSubmission) { v.CategoryCode += "_changed" },
+		"rule_type":      func(v *RuleSubmission) { v.RuleType = "pattern" },
+		"pattern":        func(v *RuleSubmission) { v.Pattern += " changed" },
+		"weight":         func(v *RuleSubmission) { v.Weight++ },
+		"severity":       func(v *RuleSubmission) { v.Severity = "critical" },
+		"enabled":        func(v *RuleSubmission) { v.Enabled = false },
+		"explanation":    func(v *RuleSubmission) { v.Explanation += " changed" },
+		"recommendation": func(v *RuleSubmission) { v.Recommendation += " changed" },
+	}
+	for name, mutate := range cases {
+		t.Run(name, func(t *testing.T) {
+			changed := base
+			mutate(&changed)
+			got, err := RuleSubmissionDraftDigest(changed)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got == baseDigest {
+				t.Fatalf("persisted draft field %s changed without changing digest", name)
+			}
+		})
+	}
+}
+
+func TestRuleSubmissionDraftDigestExcludesSystemOwnedFields(t *testing.T) {
+	base := digestFixtureSubmission()
+	baseDigest, err := RuleSubmissionDraftDigest(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	arbitraryDigest := strings.Repeat("f", 64)
+	changed := base
+	changed.ID = 99
+	changed.Status = "reviewed_test_fixture"
+	changed.DraftDigest = &arbitraryDigest
+	changed.CreatedAt = time.Now().UTC()
+	changed.UpdatedAt = changed.CreatedAt.Add(time.Hour)
+	got, err := RuleSubmissionDraftDigest(changed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != baseDigest {
+		t.Fatalf("system-owned fields must not affect replay identity: got %s want %s", got, baseDigest)
 	}
 }
 
