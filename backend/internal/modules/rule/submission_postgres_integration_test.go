@@ -27,11 +27,11 @@ func TestPostgresConcurrentExactReplayConvergesOnOnePendingSubmission(t *testing
 	}
 	sqlDB.SetMaxOpenConns(32)
 	t.Cleanup(func() {
-		_ = db.Migrator().DropTable(&database.RuleSubmission{}, &database.RiskRule{}, &database.Category{})
+		_ = db.Migrator().DropTable(&database.RuleSubmissionReviewEvent{}, &database.RuleSubmission{}, &database.RiskRule{}, &database.Category{})
 		_ = sqlDB.Close()
 	})
 
-	_ = db.Migrator().DropTable(&database.RuleSubmission{}, &database.RiskRule{}, &database.Category{})
+	_ = db.Migrator().DropTable(&database.RuleSubmissionReviewEvent{}, &database.RuleSubmission{}, &database.RiskRule{}, &database.Category{})
 	if err := db.AutoMigrate(&database.Category{}, &database.RiskRule{}, &database.RuleSubmission{}); err != nil {
 		t.Fatalf("migrate PostgreSQL integration schema: %v", err)
 	}
