@@ -30,6 +30,9 @@ func Connect(cfg config.Config) (*Store, error) {
 	if err := db.AutoMigrate(&Category{}, &RiskRule{}, &RuleSubmission{}, &ScamCase{}, &AnalysisRecord{}); err != nil {
 		return nil, err
 	}
+	if err := PrepareRuleSubmissionIdempotency(db); err != nil {
+		return nil, err
+	}
 	rdb := redis.NewClient(&redis.Options{Addr: cfg.RedisAddr})
 	ctx, cancel := context.WithTimeout(context.Background(), 800*time.Millisecond)
 	defer cancel()
