@@ -23,6 +23,9 @@ func newSubmissionHandlerTestDB(t *testing.T) *gorm.DB {
 	if err := db.AutoMigrate(&database.Category{}, &database.RiskRule{}, &database.RuleSubmission{}); err != nil {
 		t.Fatal(err)
 	}
+	if err := database.PrepareRuleSubmissionIdempotency(db); err != nil {
+		t.Fatal(err)
+	}
 	if err := db.Create(&database.Category{Code: "fake_customer_service", Name: "冒充客服", SeverityDefault: "high"}).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -97,9 +100,65 @@ func TestSubmissionCreateHandlerCreatesOnePendingSubmission(t *testing.T) {
 	if err := db.First(&item).Error; err != nil {
 		t.Fatal(err)
 	}
-	if item.Status != PendingSubmissionStatus {
-		t.Fatalf("expected pending status, got %q", item.Status)
+	if item.Status != PendingSubmissionStatus || item.DraftDigest == nil {
+		t.Fatalf("expected digested pending submission, got %+v", item)
 	}
+	if strings.Contains(resp.Body.String(), "draft_digest") {
+		t.Fatal("server-owned draft digest must not be exposed in public response")
+	}
+}
+
+func TestSubmissionCreateHandlerExactReplayReturns200AndSameBody(t *testing.T) {
+	db := newSubmissionHandlerTestDB(t)
+	body := validSubmissionDraftJSON(t)
+	first := serveSubmissionHandler(db, "application/json", body)
+	if first.Code != http.StatusCreated {
+		t.Fatalf("expected first request 201, got %d: %s", first.Code, first.Body.String())
+	}
+	second := serveSubmissionHandler(db, "application/json", body)
+	if second.Code != http.StatusOK {
+		t.Fatalf("expected exact replay 200, got %d: %s", second.Code, second.Body.String())
+	}
+	if first.Body.String() != second.Body.String() {
+		t.Fatalf("exact replay must return the existing submission payload\nfirst: %s\nsecond: %s", first.Body.String(), second.Body.String())
+	}
+	assertSubmissionCounts(t, db, 1, 0)
+}
+
+func TestSubmissionCreateHandlerJSONPropertyOrderDoesNotChangeReplayIdentity(t *testing.T) {
+	db := newSubmissionHandlerTestDB(t)
+	firstBody := validSubmissionDraftJSON(t)
+	var reordered map[string]any
+	if err := json.Unmarshal(firstBody, &reordered); err != nil {
+		t.Fatal(err)
+	}
+	secondBody := marshalSubmissionJSON(t, reordered)
+	if bytes.Equal(firstBody, secondBody) {
+		t.Fatal("test fixture must use different raw JSON serialization")
+	}
+	first := serveSubmissionHandler(db, "application/json", firstBody)
+	second := serveSubmissionHandler(db, "application/json", secondBody)
+	if first.Code != http.StatusCreated || second.Code != http.StatusOK {
+		t.Fatalf("field-order replay semantics failed: first=%d second=%d", first.Code, second.Code)
+	}
+	if first.Body.String() != second.Body.String() {
+		t.Fatal("different JSON property order must resolve to the same pending submission")
+	}
+	assertSubmissionCounts(t, db, 1, 0)
+}
+
+func TestSubmissionCreateHandlerRejectsClientDraftDigestWithoutWrites(t *testing.T) {
+	db := newSubmissionHandlerTestDB(t)
+	body := marshalSubmissionJSON(t, map[string]any{
+		"code": "synthetic", "name": "Synthetic", "category_code": "fake_customer_service",
+		"rule_type": "keyword", "pattern": "synthetic", "weight": 10, "severity": "low",
+		"draft_digest": strings.Repeat("a", 64),
+	})
+	resp := serveSubmissionHandler(db, "application/json", body)
+	if resp.Code != http.StatusBadRequest {
+		t.Fatalf("client-provided draft_digest must be rejected, got %d: %s", resp.Code, resp.Body.String())
+	}
+	assertSubmissionCounts(t, db, 0, 0)
 }
 
 func TestSubmissionCreateHandlerRejectsInvalidDraftWithoutWrites(t *testing.T) {

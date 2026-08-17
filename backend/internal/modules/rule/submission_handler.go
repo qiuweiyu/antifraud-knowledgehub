@@ -36,7 +36,7 @@ func SubmissionCreateHandler(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		submission, result, err := CreatePendingSubmission(db, draft)
+		submission, result, created, err := CreateOrReplayPendingSubmission(db, draft)
 		if err != nil {
 			response.Fail(c, http.StatusInternalServerError, "submission_create_failed", "rule submission could not be created")
 			return
@@ -50,7 +50,11 @@ func SubmissionCreateHandler(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		response.Created(c, submission)
+		if created {
+			response.Created(c, submission)
+			return
+		}
+		response.OK(c, submission)
 	}
 }
 

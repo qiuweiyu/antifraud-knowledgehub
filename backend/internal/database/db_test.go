@@ -20,4 +20,10 @@ func TestConnectAutoMigratesRuleSubmission(t *testing.T) {
 	if !store.DB.Migrator().HasTable(&RuleSubmission{}) {
 		t.Fatal("expected RuleSubmission table to be created by database startup migration")
 	}
+	if !store.DB.Migrator().HasColumn(&RuleSubmission{}, "DraftDigest") {
+		t.Fatal("expected RuleSubmission draft_digest column to be prepared at startup")
+	}
+	if !store.DB.Migrator().HasIndex(&RuleSubmission{}, RuleSubmissionPendingDigestIndex) {
+		t.Fatalf("expected partial unique index %s to be prepared at startup", RuleSubmissionPendingDigestIndex)
+	}
 }

@@ -76,7 +76,9 @@ Requirements:
 - JSON must contain only fields supported by the existing rule `DraftRequest`
 - Redis-backed per-credential and global rate limits must be available
 
-The handler always delegates persistence to `CreatePendingSubmission`, so a successful request creates one non-executable `RuleSubmission` with server-assigned status `pending`. It never creates or modifies a `RiskRule`.
+Persistence delegates to the replay-safe pending-submission service. A new valid canonical draft creates one non-executable `RuleSubmission` with server-assigned status `pending`; an exact retry returns the already existing pending submission instead of creating another row. Neither create nor replay creates or modifies a `RiskRule`.
+
+Exact replay is based on a server-computed SHA-256 fingerprint of the normalized persisted draft snapshot. The digest is internal: clients do not send it and it is not exposed in the response. Same `code` with different persisted content remains a distinct proposal. Authorization and Redis rate limiting run before replay detection, so retries still consume normal abuse-control budget.
 
 Example request:
 
@@ -96,15 +98,16 @@ Example request:
 
 Important response statuses:
 
-- `201` — one pending submission created
-- `400` — malformed JSON, unknown fields, trailing JSON, or invalid rule draft
+- `201` — one new pending submission created
+- `200` — exact replay; the existing pending submission is returned with the same ID
+- `400` — malformed JSON, unknown fields, trailing JSON, or invalid rule draft for a new digest
 - `401` — missing or invalid controlled write credential
 - `413` — request body exceeds 32 KiB
 - `415` — unsupported content type
 - `429` — submission rate limit exceeded
 - `503` — Redis/rate-limiter protection cannot be evaluated
 
-The route is intentionally unavailable when the feature flag is disabled. Credentials and raw submission bodies must not be logged.
+The route is intentionally unavailable when the feature flag is disabled. Credentials, raw submission bodies, canonical JSON, and draft digests must not be logged.
 
 ## Cases
 
