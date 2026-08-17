@@ -52,6 +52,20 @@ type RuleSubmission struct {
 	UpdatedAt      time.Time  `json:"updated_at"`
 }
 
+type RuleSubmissionReviewEvent struct {
+	ID           uint           `json:"id" gorm:"primaryKey"`
+	SubmissionID uint           `json:"submission_id" gorm:"not null;uniqueIndex"`
+	Submission   RuleSubmission `json:"-" gorm:"constraint:OnUpdate:CASCADE,OnDelete:RESTRICT;foreignKey:SubmissionID;references:ID"`
+	Decision     string         `json:"decision" gorm:"size:32;not null;check:chk_rule_submission_review_decision,decision IN ('approved','rejected')"`
+	FromStatus   string         `json:"from_status" gorm:"size:32;not null;check:chk_rule_submission_review_from_status,from_status = 'pending'"`
+	ToStatus     string         `json:"to_status" gorm:"size:32;not null;check:chk_rule_submission_review_to_status,to_status = decision AND to_status IN ('approved','rejected')"`
+	Reason       string         `json:"reason" gorm:"not null"`
+	ActorKind    string         `json:"actor_kind" gorm:"size:40;not null;check:chk_rule_submission_review_actor_kind,actor_kind = 'controlled_maintainer'"`
+	ActorLabel   string         `json:"actor_label" gorm:"size:120;not null"`
+	DraftDigest  string         `json:"-" gorm:"size:64;not null"`
+	CreatedAt    time.Time      `json:"created_at" gorm:"index"`
+}
+
 type ScamCase struct {
 	ID           uint           `json:"id" gorm:"primaryKey"`
 	Title        string         `json:"title" gorm:"size:220;not null"`
