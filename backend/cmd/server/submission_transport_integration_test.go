@@ -104,7 +104,7 @@ func TestControlledSubmissionTransportIntegrationCreatesPendingAndRateLimits(t *
 
 	limited := performSubmissionTransportRequest(router, submissionTransportTestToken, "application/json", body)
 	if limited.Code != http.StatusTooManyRequests {
-		t.Fatalf("second attempt: expected 429, got %d: %s", limited.Code, limited.Body.String())
+		t.Fatalf("second attempt: expected 429 before replay detection, got %d: %s", limited.Code, limited.Body.String())
 	}
 	assertSubmissionTransportWrites(t, db, 1, 0)
 
@@ -118,4 +118,28 @@ func TestControlledSubmissionTransportIntegrationCreatesPendingAndRateLimits(t *
 			t.Fatalf("request log leaked credential or submission body: %s", logText)
 		}
 	}
+}
+
+func TestControlledSubmissionTransportIntegrationExactReplayReturns200(t *testing.T) {
+	db := newSubmissionTransportTestDB(t)
+	client := submissionTransportRedisClient(t)
+	cfg := controlledSubmissionConfig()
+	cfg.RuleSubmissionCredentialLimit = 3
+	cfg.RuleSubmissionGlobalLimit = 10
+	cfg.RuleSubmissionRateWindow = time.Minute
+
+	router := newRouter(cfg, zap.NewNop(), &database.Store{DB: db, Redis: client})
+	body := validSubmissionTransportBody(t)
+	first := performSubmissionTransportRequest(router, submissionTransportTestToken, "application/json", body)
+	if first.Code != http.StatusCreated {
+		t.Fatalf("first request: expected 201, got %d: %s", first.Code, first.Body.String())
+	}
+	second := performSubmissionTransportRequest(router, submissionTransportTestToken, "application/json", body)
+	if second.Code != http.StatusOK {
+		t.Fatalf("exact replay: expected 200, got %d: %s", second.Code, second.Body.String())
+	}
+	if first.Body.String() != second.Body.String() {
+		t.Fatalf("exact replay must return the existing submission payload\nfirst: %s\nsecond: %s", first.Body.String(), second.Body.String())
+	}
+	assertSubmissionTransportWrites(t, db, 1, 0)
 }
