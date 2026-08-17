@@ -25,6 +25,9 @@ func newSubmissionTransportTestDB(t *testing.T) *gorm.DB {
 	if err := db.AutoMigrate(&database.Category{}, &database.RiskRule{}, &database.RuleSubmission{}, &database.ScamCase{}, &database.AnalysisRecord{}); err != nil {
 		t.Fatal(err)
 	}
+	if err := database.PrepareRuleSubmissionIdempotency(db); err != nil {
+		t.Fatal(err)
+	}
 	if err := db.Create(&database.Category{Code: "fake_customer_service", Name: "冒充客服", SeverityDefault: "high"}).Error; err != nil {
 		t.Fatal(err)
 	}
