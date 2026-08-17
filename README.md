@@ -136,6 +136,7 @@ Real screenshots captured from the runnable local MVP are available in
 - [Data schema](docs/data-schema.md)
 - [Risk engine](docs/risk-engine.md)
 - [Rule contribution format](docs/rule-contribution-format.md)
+- [Rule submission review and audit design](docs/rule-submission-review-audit-design.md)
 - [Roadmap](docs/roadmap.md)
 
 ## Contributing
