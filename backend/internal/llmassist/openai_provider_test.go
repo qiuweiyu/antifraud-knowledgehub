@@ -25,8 +25,27 @@ func (d *recordingDoer) Do(req *http.Request) (*http.Response, error) {
 	return d.do(req)
 }
 
-func completedOpenAIResponse(output string) *http.Response {
-	payload, _ := json.Marshal(map[string]any{
+func jsonString(t *testing.T, value any) string {
+	t.Helper()
+	payload, err := json.Marshal(value)
+	if err != nil {
+		t.Fatalf("marshal fixture: %v", err)
+	}
+	return string(payload)
+}
+
+func openAIHTTPResponse(t *testing.T, value any) *http.Response {
+	t.Helper()
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       io.NopCloser(strings.NewReader(jsonString(t, value))),
+		Header:     make(http.Header),
+	}
+}
+
+func completedOpenAIResponse(t *testing.T, output string) *http.Response {
+	t.Helper()
+	return openAIHTTPResponse(t, map[string]any{
 		"status": "completed",
 		"output": []any{
 			map[string]any{
@@ -38,15 +57,15 @@ func completedOpenAIResponse(output string) *http.Response {
 			},
 		},
 	})
-	return &http.Response{
-		StatusCode: http.StatusOK,
-		Body:       io.NopCloser(strings.NewReader(string(payload))),
-		Header:     make(http.Header),
-	}
 }
 
-func validAssistanceJSON() string {
-	return `{"summary":"Supplemental summary","observations":["Check the payment request"],"limitations":["Sender identity is not verified"]}`
+func validAssistanceJSON(t *testing.T) string {
+	t.Helper()
+	return jsonString(t, map[string]any{
+		"summary":      "Supplemental summary",
+		"observations": []string{"Check the payment request"},
+		"limitations":  []string{"Sender identity is not verified"},
+	})
 }
 
 func testRuleResult() riskengine.Result {
@@ -93,7 +112,7 @@ func TestNewOpenAIProviderDisablesRedirectFollowing(t *testing.T) {
 	}
 	client, ok := concrete.client.(*http.Client)
 	if !ok || client.CheckRedirect == nil {
-		t.Fatalf("production provider must use a redirect-controlled http.Client")
+		t.Fatal("production provider must use a redirect-controlled http.Client")
 	}
 	if err := client.CheckRedirect(&http.Request{}, nil); !errors.Is(err, http.ErrUseLastResponse) {
 		t.Fatalf("redirects must be rejected, got %v", err)
@@ -198,7 +217,7 @@ func TestOpenAIProviderRequestContractAndPromptIsolation(t *testing.T) {
 		if data.DeterministicRuleResult.RiskScore != 80 || data.DeterministicRuleResult.RiskLevel != "high" {
 			t.Fatalf("deterministic result missing from input: %+v", data.DeterministicRuleResult)
 		}
-		return completedOpenAIResponse(validAssistanceJSON()), nil
+		return completedOpenAIResponse(t, validAssistanceJSON(t)), nil
 	}
 
 	provider, err := newOpenAIProviderWithDoer(apiKey, OpenAIModelGPT56, doer)
@@ -225,7 +244,7 @@ func TestOpenAIProviderRejectsInputBeforeHTTP(t *testing.T) {
 		{name: "whitespace", input: Input{Text: "  \n\t  "}},
 		{name: "text over limit", input: Input{Text: strings.Repeat("x", maxOpenAIInputTextBytes+1)}},
 		{name: "rendered context over limit", input: Input{
-			Text: "small suspicious text",
+			Text:       "small suspicious text",
 			RuleResult: riskengine.Result{Recommendations: []string{strings.Repeat("r", maxOpenAIRenderedBytes)}},
 		}},
 	}
@@ -248,6 +267,19 @@ func TestOpenAIProviderRejectsInputBeforeHTTP(t *testing.T) {
 
 func TestOpenAIProviderFailureSemanticsDoNotLeakSecret(t *testing.T) {
 	const apiKey = "super-secret-provider-key"
+	incomplete := openAIHTTPResponse(t, map[string]any{"status": "incomplete", "output": []any{}})
+	refusal := openAIHTTPResponse(t, map[string]any{
+		"status": "completed",
+		"output": []any{map[string]any{
+			"type": "message", "role": "assistant",
+			"content": []any{map[string]any{"type": "refusal", "refusal": "cannot comply"}},
+		}},
+	})
+	noOutput := openAIHTTPResponse(t, map[string]any{"status": "completed", "output": []any{}})
+	unknownField := jsonString(t, map[string]any{
+		"summary": "ok", "observations": []any{}, "limitations": []any{}, "verdict": "safe",
+	})
+
 	tests := []struct {
 		name      string
 		response  *http.Response
@@ -256,10 +288,10 @@ func TestOpenAIProviderFailureSemanticsDoNotLeakSecret(t *testing.T) {
 	}{
 		{name: "non success", response: &http.Response{StatusCode: http.StatusTooManyRequests, Body: io.NopCloser(strings.NewReader("provider says super-secret-provider-key"))}},
 		{name: "malformed JSON", response: &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader("{"))}},
-		{name: "incomplete", response: &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"status":"incomplete","output":[]}`))}},
-		{name: "refusal", response: &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"refusal","refusal":"cannot comply"}]}]}`))}},
-		{name: "no output", response: &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"status":"completed","output":[]}`))}},
-		{name: "malformed structured output", response: completedOpenAIResponse(`{"summary":"ok","observations":[],"limitations":[],"verdict":"safe"}`)},
+		{name: "incomplete", response: incomplete},
+		{name: "refusal", response: refusal},
+		{name: "no output", response: noOutput},
+		{name: "malformed structured output", response: completedOpenAIResponse(t, unknownField)},
 		{name: "oversized response", response: &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(strings.Repeat("x", maxOpenAIResponseBytes+1)))}},
 		{name: "network error", doErr: errors.New("network contains super-secret-provider-key")},
 		{name: "caller cancellation", cancelCtx: true},
@@ -298,10 +330,19 @@ func TestOpenAIProviderFailureSemanticsDoNotLeakSecret(t *testing.T) {
 }
 
 func TestOpenAIProviderRequiresExactlyOneStructuredOutput(t *testing.T) {
-	response := `{"status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"{\"summary\":\"one\",\"observations\":[],\"limitations\":[]}"},{"type":"output_text","text":"{\"summary\":\"two\",\"observations\":[],\"limitations\":[]}"}]}]}`
-	doer := &recordingDoer{do: func(_ *http.Request) (*http.Response, error) {
-		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(response))}, nil
-	}}
+	first := jsonString(t, map[string]any{"summary": "one", "observations": []any{}, "limitations": []any{}})
+	second := jsonString(t, map[string]any{"summary": "two", "observations": []any{}, "limitations": []any{}})
+	response := openAIHTTPResponse(t, map[string]any{
+		"status": "completed",
+		"output": []any{map[string]any{
+			"type": "message", "role": "assistant",
+			"content": []any{
+				map[string]any{"type": "output_text", "text": first},
+				map[string]any{"type": "output_text", "text": second},
+			},
+		}},
+	})
+	doer := &recordingDoer{do: func(_ *http.Request) (*http.Response, error) { return response, nil }}
 	provider, err := newOpenAIProviderWithDoer("secret", OpenAIModelGPT56, doer)
 	if err != nil {
 		t.Fatalf("construct provider: %v", err)
