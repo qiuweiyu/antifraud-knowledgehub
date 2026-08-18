@@ -23,18 +23,31 @@ func deepSeekHTTPResponse(t *testing.T, value any) *http.Response {
 	}
 }
 
-func completedDeepSeekResponse(t *testing.T, output string) *http.Response {
+func deepSeekChoiceFixture(finishReason string, index int, role, content string, toolCalls []any) map[string]any {
+	message := map[string]any{
+		"role":    role,
+		"content": content,
+	}
+	if toolCalls != nil {
+		message["tool_calls"] = toolCalls
+	}
+	return map[string]any{
+		"finish_reason": finishReason,
+		"index":         index,
+		"message":       message,
+	}
+}
+
+func deepSeekChoiceResponse(t *testing.T, finishReason string, index int, role, content string, toolCalls []any) *http.Response {
 	t.Helper()
 	return deepSeekHTTPResponse(t, map[string]any{
-		"choices": []any{map[string]any{
-			"finish_reason": "stop",
-			"index":         0,
-			"message": map[string]any{
-				"role":    "assistant",
-				"content": output,
-			},
-		}},
+		"choices": []any{deepSeekChoiceFixture(finishReason, index, role, content, toolCalls)},
 	})
+}
+
+func completedDeepSeekResponse(t *testing.T, output string) *http.Response {
+	t.Helper()
+	return deepSeekChoiceResponse(t, "stop", 0, "assistant", output, nil)
 }
 
 func TestNewDeepSeekProviderValidatesConfiguration(t *testing.T) {
@@ -209,6 +222,12 @@ func TestDeepSeekProviderRejectsInputBeforeHTTP(t *testing.T) {
 func TestDeepSeekProviderFailureSemanticsDoNotLeakSecret(t *testing.T) {
 	const apiKey = "deepseek-super-secret-key"
 	valid := validAssistanceJSON(t)
+	multipleChoices := deepSeekHTTPResponse(t, map[string]any{
+		"choices": []any{
+			deepSeekChoiceFixture("stop", 0, "assistant", valid, nil),
+			deepSeekChoiceFixture("stop", 1, "assistant", valid, nil),
+		},
+	})
 
 	tests := []struct {
 		name      string
@@ -219,17 +238,16 @@ func TestDeepSeekProviderFailureSemanticsDoNotLeakSecret(t *testing.T) {
 		{name: "non success", response: &http.Response{StatusCode: http.StatusTooManyRequests, Body: io.NopCloser(strings.NewReader("provider says deepseek-super-secret-key"))}},
 		{name: "malformed JSON", response: &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader("{"))}},
 		{name: "no choice", response: deepSeekHTTPResponse(t, map[string]any{"choices": []any{}})},
-		{name: "multiple choices", response: deepSeekHTTPResponse(t, map[string]any{"choices": []any{
-			map[string]any{"finish_reason": "stop", "index": 0, "message": map[string]any{"role": "assistant", "content": valid}},
-			map[string]any{"finish_reason": "stop", "index": 1, "message": map[string]any{"role": "assistant", "content": valid}},
-		}})},
-		{name: "wrong index", response: deepSeekHTTPResponse(t, map[string]any{"choices": []any{map[string]any{"finish_reason": "stop", "index": 1, "message": map[string]any{"role": "assistant", "content": valid}}})},
-		{name: "length finish", response: deepSeekHTTPResponse(t, map[string]any{"choices": []any{map[string]any{"finish_reason": "length", "index": 0, "message": map[string]any{"role": "assistant", "content": valid}}})},
-		{name: "tool finish", response: deepSeekHTTPResponse(t, map[string]any{"choices": []any{map[string]any{"finish_reason": "tool_calls", "index": 0, "message": map[string]any{"role": "assistant", "content": valid}}})},
-		{name: "wrong role", response: deepSeekHTTPResponse(t, map[string]any{"choices": []any{map[string]any{"finish_reason": "stop", "index": 0, "message": map[string]any{"role": "user", "content": valid}}})},
-		{name: "unexpected tool calls", response: deepSeekHTTPResponse(t, map[string]any{"choices": []any{map[string]any{"finish_reason": "stop", "index": 0, "message": map[string]any{"role": "assistant", "content": valid, "tool_calls": []any{map[string]any{"id": "unexpected"}}}}})},
+		{name: "multiple choices", response: multipleChoices},
+		{name: "wrong index", response: deepSeekChoiceResponse(t, "stop", 1, "assistant", valid, nil)},
+		{name: "length finish", response: deepSeekChoiceResponse(t, "length", 0, "assistant", valid, nil)},
+		{name: "tool finish", response: deepSeekChoiceResponse(t, "tool_calls", 0, "assistant", valid, nil)},
+		{name: "wrong role", response: deepSeekChoiceResponse(t, "stop", 0, "user", valid, nil)},
+		{name: "unexpected tool calls", response: deepSeekChoiceResponse(t, "stop", 0, "assistant", valid, []any{map[string]any{"id": "unexpected"}})},
 		{name: "blank content", response: completedDeepSeekResponse(t, "   ")},
-		{name: "unknown assistance field", response: completedDeepSeekResponse(t, jsonString(t, map[string]any{"summary": "ok", "observations": []any{}, "limitations": []any{}, "verdict": "safe"}))},
+		{name: "unknown assistance field", response: completedDeepSeekResponse(t, jsonString(t, map[string]any{
+			"summary": "ok", "observations": []any{}, "limitations": []any{}, "verdict": "safe",
+		}))},
 		{name: "oversized response", response: &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(strings.Repeat("x", maxDeepSeekResponseBytes+1)))}},
 		{name: "network error", doErr: errors.New("network contains deepseek-super-secret-key")},
 		{name: "caller cancellation", cancelCtx: true},
