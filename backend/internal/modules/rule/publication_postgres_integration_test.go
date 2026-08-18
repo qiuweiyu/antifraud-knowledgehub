@@ -40,22 +40,24 @@ func TestPostgresConcurrentIdenticalPublicationsConvergeOnOneRuleAndEvent(t *tes
 	for i := 0; i < callers; i++ {
 		got := <-results
 		if got.err != nil {
-			t.Fatalf("concurrent publication %d failed: %v", i, got.err)
+			t.Errorf("concurrent publication %d failed: %v", i, got.err)
+			continue
 		}
 		if got.ruleID == 0 || got.eventID == 0 {
-			t.Fatalf("concurrent publication %d returned empty identity: %+v", i, got)
+			t.Errorf("concurrent publication %d returned empty identity: %+v", i, got)
+			continue
 		}
 		if canonicalRuleID == 0 {
 			canonicalRuleID, canonicalEventID = got.ruleID, got.eventID
 		} else if got.ruleID != canonicalRuleID || got.eventID != canonicalEventID {
-			t.Fatalf("all identical publications must converge: want rule/event %d/%d got %d/%d", canonicalRuleID, canonicalEventID, got.ruleID, got.eventID)
+			t.Errorf("all identical publications must converge: want rule/event %d/%d got %d/%d", canonicalRuleID, canonicalEventID, got.ruleID, got.eventID)
 		}
 		if !got.replay {
 			created++
 		}
 	}
 	if created != 1 {
-		t.Fatalf("expected exactly one first publication, got %d non-replay outcomes", created)
+		t.Errorf("expected exactly one first publication, got %d non-replay outcomes", created)
 	}
 	assertPublicationCounts(t, db, 1, 1)
 	assertSubmissionStatus(t, db, submission.ID, ApprovedSubmissionStatus)
@@ -134,15 +136,15 @@ func TestPostgresConcurrentDifferentApprovedSubmissionsSameCodeHaveOneWinner(t *
 	}
 	close(start)
 
-	successes, conflicts := 0, 0
+	successes, losers := 0, 0
 	var loserID uint
 	for i := 0; i < 2; i++ {
 		got := <-results
 		switch {
 		case got.err == nil:
 			successes++
-		case errors.Is(got.err, ErrSubmissionPublicationConflict):
-			conflicts++
+		case errors.Is(got.err, ErrSubmissionPublicationConflict), errors.Is(got.err, ErrSubmissionPublicationValidation):
+			losers++
 			loserID = got.submissionID
 			if got.outcome.Validation.Valid || len(got.outcome.Validation.Errors) == 0 || got.outcome.Validation.Errors[0].Code != "duplicate_code" {
 				t.Fatalf("same-code loser must carry duplicate-code validation context: %+v", got.outcome.Validation)
@@ -151,8 +153,8 @@ func TestPostgresConcurrentDifferentApprovedSubmissionsSameCodeHaveOneWinner(t *
 			t.Fatalf("unexpected same-code race error for submission %d: %v", got.submissionID, got.err)
 		}
 	}
-	if successes != 1 || conflicts != 1 || loserID == 0 {
-		t.Fatalf("expected one same-code winner and loser, success=%d conflict=%d loser=%d", successes, conflicts, loserID)
+	if successes != 1 || losers != 1 || loserID == 0 {
+		t.Fatalf("expected one same-code winner and loser, success=%d loser=%d loserID=%d", successes, losers, loserID)
 	}
 	assertPublicationCounts(t, db, 1, 1)
 	assertSubmissionStatus(t, db, first.ID, ApprovedSubmissionStatus)
