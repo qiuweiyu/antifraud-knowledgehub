@@ -22,7 +22,7 @@ const (
 	maxAssistedAnalysisTextBytes = 12 * 1024
 )
 
-type assistedAnalysisService interface {
+type AssistanceService interface {
 	Assist(context.Context, llmassist.Input) llmassist.Outcome
 }
 
@@ -31,8 +31,8 @@ type AssistedAnalysisRequest struct {
 }
 
 type AssistedAnalysisResponse struct {
-	RuleResult    riskengine.Result          `json:"rule_result"`
-	LLMAssistance AssistedLLMResponse        `json:"llm_assistance"`
+	RuleResult    riskengine.Result   `json:"rule_result"`
+	LLMAssistance AssistedLLMResponse `json:"llm_assistance"`
 }
 
 type AssistedLLMResponse struct {
@@ -42,7 +42,7 @@ type AssistedLLMResponse struct {
 	Assistance llmassist.Assistance `json:"assistance"`
 }
 
-func AssistedAnalysisHandler(db *gorm.DB, service assistedAnalysisService, provider, model string) gin.HandlerFunc {
+func AssistedAnalysisHandler(db *gorm.DB, service AssistanceService, provider, model string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if db == nil || service == nil {
 			response.Fail(c, http.StatusServiceUnavailable, "analysis_unavailable", "Analysis unavailable")
