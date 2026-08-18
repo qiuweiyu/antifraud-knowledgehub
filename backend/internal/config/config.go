@@ -34,6 +34,7 @@ type Config struct {
 	LLMAssistanceModel                  string
 	LLMAssistanceTimeout                time.Duration
 	OpenAIAPIKey                        string
+	GeminiAPIKey                        string
 	RuleSubmissionsEnabled              bool
 	RuleSubmissionWriteToken            string
 	RuleSubmissionCredentialLimit       int64
@@ -60,6 +61,7 @@ func Load() Config {
 		LLMAssistanceModel:                  strings.TrimSpace(os.Getenv("LLM_ASSISTANCE_MODEL")),
 		LLMAssistanceTimeout:                durationEnv("LLM_ASSISTANCE_TIMEOUT", defaultLLMAssistanceTimeout),
 		OpenAIAPIKey:                        os.Getenv("OPENAI_API_KEY"),
+		GeminiAPIKey:                        os.Getenv("GEMINI_API_KEY"),
 		RuleSubmissionsEnabled:              boolEnv("RULE_SUBMISSIONS_ENABLED"),
 		RuleSubmissionWriteToken:            os.Getenv("RULE_SUBMISSION_WRITE_TOKEN"),
 		RuleSubmissionCredentialLimit:       int64Env("RULE_SUBMISSION_CREDENTIAL_LIMIT", defaultSubmissionCredentialLimit),
@@ -79,14 +81,22 @@ func (c Config) Validate() error {
 		if c.LLMAssistanceTimeout < time.Millisecond {
 			return fmt.Errorf("LLM_ASSISTANCE_TIMEOUT must be at least 1ms when LLM assistance is enabled")
 		}
-		if c.LLMAssistanceProvider != llmassist.ProviderOpenAI {
-			return fmt.Errorf("LLM_ASSISTANCE_PROVIDER %q is not registered in this build", c.LLMAssistanceProvider)
-		}
 		if _, err := llmassist.NormalizeModelIdentifier(c.LLMAssistanceModel); err != nil {
 			return fmt.Errorf("LLM_ASSISTANCE_MODEL is invalid: %w", err)
 		}
-		if _, err := c.LLMAssistanceCredential(); err != nil {
+		credential, err := c.LLMAssistanceCredential()
+		if err != nil {
 			return err
+		}
+		registry, err := llmassist.NewDefaultRegistry()
+		if err != nil {
+			return fmt.Errorf("LLM provider registry initialization failed")
+		}
+		if _, err := registry.Create(c.LLMAssistanceProvider, llmassist.ProviderConfig{
+			Model:  c.LLMAssistanceModel,
+			APIKey: credential,
+		}); err != nil {
+			return fmt.Errorf("LLM provider configuration is invalid: %w", err)
 		}
 	}
 
@@ -162,6 +172,11 @@ func (c Config) LLMAssistanceCredential() (string, error) {
 			return "", fmt.Errorf("OPENAI_API_KEY is required when OpenAI LLM assistance is enabled")
 		}
 		return c.OpenAIAPIKey, nil
+	case llmassist.ProviderGemini:
+		if strings.TrimSpace(c.GeminiAPIKey) == "" {
+			return "", fmt.Errorf("GEMINI_API_KEY is required when Gemini LLM assistance is enabled")
+		}
+		return c.GeminiAPIKey, nil
 	default:
 		return "", fmt.Errorf("LLM_ASSISTANCE_PROVIDER %q has no credential resolver in this build", c.LLMAssistanceProvider)
 	}
