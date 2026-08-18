@@ -259,18 +259,3 @@ func TestSubmissionPublicationHandlerCreatesReplaysAndNeverRecreatesHardDeletedR
 	assertSubmissionStatus(t, db, submission.ID, ApprovedSubmissionStatus)
 	assertPublicationReviewUnchanged(t, db, reviewBefore)
 }
-
-func uintString(value uint) string {
-	const digits = "0123456789"
-	if value == 0 {
-		return "0"
-	}
-	var buf [20]byte
-	i := len(buf)
-	for value > 0 {
-		i--
-		buf[i] = digits[value%10]
-		value /= 10
-	}
-	return string(buf[i:])
-}
