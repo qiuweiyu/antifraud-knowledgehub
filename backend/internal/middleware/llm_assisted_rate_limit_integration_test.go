@@ -8,27 +8,6 @@ import (
 
 const llmAssistedRateGlobalKey = "afkh:llm-assisted-analysis:rate:global"
 
-func llmAssistedCredentialRateKeyForTest(token string) string {
-	return "afkh:llm-assisted-analysis:rate:credential:" + llmAssistedCredentialID(token)
-}
-
-func resetLLMAssistedIntegrationKeys(t *testing.T, credentialKeys ...string) {
-	t.Helper()
-	client := integrationRedisClient(t)
-	keys := append([]string{llmAssistedRateGlobalKey}, credentialKeys...)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	if err := client.Del(ctx, keys...).Err(); err != nil {
-		t.Fatalf("reset assisted-analysis integration Redis keys: %v", err)
-	}
-	t.Cleanup(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancel()
-		_ = client.Del(ctx, keys...).Err()
-	})
-	_ = client.Close()
-}
-
 func TestRedisLLMAssistedRateBackendIntegrationCredentialLimit(t *testing.T) {
 	client := integrationRedisClient(t)
 	backend := RedisLLMAssistedRateBackend{Client: client}
@@ -92,7 +71,7 @@ func TestRedisLLMAssistedRateBackendIntegrationGlobalLimitAndNamespaceIsolation(
 	}
 	t.Cleanup(func() { _ = client.Del(context.Background(), allKeys...).Err() })
 
-	cfg := LLMAssistedRateConfig{CredentialLimit: 10, GlobalLimit: 2, Window: 2 * time.Second}
+	cfg := LLMAssistedRateConfig{CredentialLimit: 2, GlobalLimit: 2, Window: 2 * time.Second}
 	for index := 0; index < 2; index++ {
 		allowed, err := backend.Allow(ctx, ids[index], cfg)
 		if err != nil {
