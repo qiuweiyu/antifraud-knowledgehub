@@ -17,20 +17,21 @@ type Category struct {
 }
 
 type RiskRule struct {
-	ID             uint      `json:"id" gorm:"primaryKey"`
-	Code           string    `json:"code" gorm:"uniqueIndex;size:120;not null"`
-	Name           string    `json:"name" gorm:"size:180;not null"`
-	Description    string    `json:"description"`
-	CategoryCode   string    `json:"category_code" gorm:"index;size:100;not null"`
-	RuleType       string    `json:"rule_type" gorm:"size:40;not null"`
-	Pattern        string    `json:"pattern" gorm:"not null"`
-	Weight         int       `json:"weight" gorm:"not null"`
-	Severity       string    `json:"severity" gorm:"size:40;not null"`
-	Enabled        bool      `json:"enabled" gorm:"not null;default:true"`
-	Explanation    string    `json:"explanation"`
-	Recommendation string    `json:"recommendation"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
+	ID                 uint      `json:"id" gorm:"primaryKey"`
+	Code               string    `json:"code" gorm:"uniqueIndex;size:120;not null"`
+	Name               string    `json:"name" gorm:"size:180;not null"`
+	Description        string    `json:"description"`
+	CategoryCode       string    `json:"category_code" gorm:"index;size:100;not null"`
+	RuleType           string    `json:"rule_type" gorm:"size:40;not null"`
+	Pattern            string    `json:"pattern" gorm:"not null"`
+	Weight             int       `json:"weight" gorm:"not null"`
+	Severity           string    `json:"severity" gorm:"size:40;not null"`
+	Enabled            bool      `json:"enabled" gorm:"not null;default:true"`
+	Explanation        string    `json:"explanation"`
+	Recommendation     string    `json:"recommendation"`
+	SourceSubmissionID *uint     `json:"-" gorm:"index"`
+	CreatedAt          time.Time `json:"created_at"`
+	UpdatedAt          time.Time `json:"updated_at"`
 }
 
 type RuleSubmission struct {
@@ -64,6 +65,20 @@ type RuleSubmissionReviewEvent struct {
 	ActorLabel   string         `json:"actor_label" gorm:"size:120;not null"`
 	DraftDigest  string         `json:"-" gorm:"size:64;not null"`
 	CreatedAt    time.Time      `json:"created_at" gorm:"index"`
+}
+
+type RuleSubmissionPublicationEvent struct {
+	ID            uint                      `json:"id" gorm:"primaryKey"`
+	SubmissionID  uint                      `json:"submission_id" gorm:"not null;uniqueIndex"`
+	Submission    RuleSubmission            `json:"-" gorm:"constraint:OnUpdate:CASCADE,OnDelete:RESTRICT;foreignKey:SubmissionID;references:ID"`
+	ReviewEventID uint                      `json:"review_event_id" gorm:"not null;uniqueIndex"`
+	ReviewEvent   RuleSubmissionReviewEvent `json:"-" gorm:"constraint:OnUpdate:CASCADE,OnDelete:RESTRICT;foreignKey:ReviewEventID;references:ID"`
+	RiskRuleID    uint                      `json:"risk_rule_id" gorm:"not null;index"`
+	RiskRuleCode  string                    `json:"risk_rule_code" gorm:"size:120;not null;index"`
+	ActorKind     string                    `json:"actor_kind" gorm:"size:40;not null;check:chk_rule_submission_publication_actor_kind,actor_kind = 'controlled_publisher'"`
+	ActorLabel    string                    `json:"actor_label" gorm:"size:120;not null"`
+	DraftDigest   string                    `json:"-" gorm:"size:64;not null"`
+	CreatedAt     time.Time                 `json:"created_at" gorm:"index"`
 }
 
 type ScamCase struct {
