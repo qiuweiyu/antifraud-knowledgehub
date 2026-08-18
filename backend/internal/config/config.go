@@ -17,6 +17,7 @@ const (
 	defaultSubmissionCredentialLimit    int64 = 5
 	defaultSubmissionGlobalLimit        int64 = 50
 	defaultSubmissionRateWindow               = 10 * time.Minute
+	defaultLLMAssistanceTimeout                = 5 * time.Second
 )
 
 type Config struct {
@@ -26,6 +27,9 @@ type Config struct {
 	DatabaseDSN                         string
 	RedisAddr                           string
 	CORSAllowOrigins                    []string
+	LLMAssistanceEnabled                bool
+	LLMAssistanceProvider               string
+	LLMAssistanceTimeout                time.Duration
 	RuleSubmissionsEnabled              bool
 	RuleSubmissionWriteToken            string
 	RuleSubmissionCredentialLimit       int64
@@ -47,6 +51,9 @@ func Load() Config {
 		DatabaseDSN:                         getEnv("DATABASE_DSN", "host=localhost user=postgres password=postgres dbname=antifraud port=5432 sslmode=disable TimeZone=Asia/Shanghai"),
 		RedisAddr:                           getEnv("REDIS_ADDR", "localhost:6379"),
 		CORSAllowOrigins:                    splitEnv("CORS_ALLOW_ORIGINS", []string{"http://localhost:5173", "http://localhost:3000"}),
+		LLMAssistanceEnabled:                boolEnv("LLM_ASSISTANCE_ENABLED"),
+		LLMAssistanceProvider:               strings.TrimSpace(os.Getenv("LLM_ASSISTANCE_PROVIDER")),
+		LLMAssistanceTimeout:                durationEnv("LLM_ASSISTANCE_TIMEOUT", defaultLLMAssistanceTimeout),
 		RuleSubmissionsEnabled:              boolEnv("RULE_SUBMISSIONS_ENABLED"),
 		RuleSubmissionWriteToken:            os.Getenv("RULE_SUBMISSION_WRITE_TOKEN"),
 		RuleSubmissionCredentialLimit:       int64Env("RULE_SUBMISSION_CREDENTIAL_LIMIT", defaultSubmissionCredentialLimit),
@@ -62,6 +69,13 @@ func Load() Config {
 }
 
 func (c Config) Validate() error {
+	if c.LLMAssistanceEnabled {
+		if c.LLMAssistanceTimeout < time.Millisecond {
+			return fmt.Errorf("LLM_ASSISTANCE_TIMEOUT must be at least 1ms when LLM assistance is enabled")
+		}
+		return fmt.Errorf("LLM assistance is enabled but no runtime provider is available in this build")
+	}
+
 	if c.RuleSubmissionsEnabled {
 		if strings.TrimSpace(c.RuleSubmissionWriteToken) == "" {
 			return fmt.Errorf("rule submissions are enabled but RULE_SUBMISSION_WRITE_TOKEN is not configured")
