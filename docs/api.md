@@ -169,6 +169,66 @@ Important response statuses:
 
 Approval means the proposal has been accepted for a future publication step. It does **not** create, update, enable, or otherwise publish a `RiskRule`. Exact review replay returns the existing review event; a different second decision, reason, or trusted actor attribution is a conflict. There is no review-specific Redis limiter in this transport slice.
 
+## Controlled Rule Submission Publications
+
+`POST /api/v1/rule-submissions/{id}/publications`
+
+This endpoint completes the controlled submit -> review -> publish workflow. It is registered only when `RULE_SUBMISSION_PUBLICATIONS_ENABLED=true` and valid independent publication credentials and a trusted publisher actor label are configured. Publication remains a maintainer-controlled operation; this credential is not OAuth/RBAC or proof of a specific person's identity.
+
+Requirements:
+
+- `Authorization: Bearer <RULE_SUBMISSION_PUBLICATION_TOKEN>`
+- the publication token must be independent from both write and review tokens
+- `Content-Type: application/json`
+- request body no larger than 4 KiB
+- `id` must be a positive decimal integer
+- the only valid client body is one strict empty JSON object: `{}`
+- any client-supplied actor, rule, review, digest, provenance, force/override, or recreation field is rejected
+- actor attribution comes only from `RULE_SUBMISSION_PUBLICATION_ACTOR_LABEL`
+- no publication-specific Redis limiter is used in this first controlled transport
+
+Example request:
+
+```json
+{}
+```
+
+The server publishes only the already-approved stored submission snapshot. `PublishApprovedSubmission` revalidates that snapshot against current rule constraints, verifies approved review/digest provenance, and atomically creates one `RiskRule` plus one publication event. Publication does not change the submission from `approved` to a new status and does not rewrite the approved review event.
+
+Example first-publication success data:
+
+```json
+{
+  "success": true,
+  "data": {
+    "submission_id": 123,
+    "status": "approved",
+    "review_event_id": 456,
+    "publication_event_id": 789,
+    "risk_rule_id": 321,
+    "risk_rule_code": "fake_support_remote_control",
+    "actor_kind": "controlled_publisher",
+    "actor_label": "publisher-console",
+    "created_at": "2026-08-18T13:30:00Z",
+    "replay": false
+  }
+}
+```
+
+Important response statuses:
+
+- `201` — one new publication committed
+- `200` — exact same-actor replay; the existing publication event/rule identity is returned with `replay=true`
+- `400` — invalid publication JSON or invalid positive-decimal submission ID
+- `401` — missing or invalid independent publication credential
+- `404` — submission does not exist, or the publication feature is disabled and the route is not registered
+- `409` — submission is not publishable, current validation failed, publication conflicts with current state, or a previously published rule was later hard-deleted
+- `413` — request body exceeds 4 KiB
+- `415` — unsupported content type
+- `500` — publication integrity or unexpected persistence failure
+
+The success response is audit/provenance-oriented. It does not return the rule snapshot, mutable current `RiskRule` fields, review reason, draft digest, source provenance internals, credentials, SQL, or raw persistence errors. If a publication-created `RiskRule` is later hard-deleted, retry returns conflict and never recreates that rule.
+
 ## Cases
 
 - `GET /cases?q=&category_code=`
