@@ -11,15 +11,19 @@ import (
 )
 
 const (
-	minSubmissionWriteTokenLength             = 32
-	minSubmissionReviewTokenLength            = 32
-	minSubmissionPublicationTokenLength       = 32
-	maxSubmissionReviewActorLabelBytes        = 120
-	maxSubmissionPublicationActorLabelBytes   = 120
-	defaultSubmissionCredentialLimit    int64 = 5
-	defaultSubmissionGlobalLimit        int64 = 50
-	defaultSubmissionRateWindow               = 10 * time.Minute
-	defaultLLMAssistanceTimeout                = 5 * time.Second
+	minSubmissionWriteTokenLength               = 32
+	minSubmissionReviewTokenLength              = 32
+	minSubmissionPublicationTokenLength         = 32
+	minLLMAssistedAnalysisTokenLength            = 32
+	maxSubmissionReviewActorLabelBytes          = 120
+	maxSubmissionPublicationActorLabelBytes     = 120
+	defaultSubmissionCredentialLimit      int64 = 5
+	defaultSubmissionGlobalLimit          int64 = 50
+	defaultSubmissionRateWindow                 = 10 * time.Minute
+	defaultLLMAssistanceTimeout                  = 5 * time.Second
+	defaultLLMAssistedCredentialLimit      int64 = 10
+	defaultLLMAssistedGlobalLimit          int64 = 50
+	defaultLLMAssistedRateWindow                 = time.Minute
 )
 
 type Config struct {
@@ -36,6 +40,11 @@ type Config struct {
 	OpenAIAPIKey                        string
 	GeminiAPIKey                        string
 	DeepSeekAPIKey                      string
+	LLMAssistedAnalysisHTTPEnabled      bool
+	LLMAssistedAnalysisToken            string
+	LLMAssistedAnalysisCredentialLimit  int64
+	LLMAssistedAnalysisGlobalLimit      int64
+	LLMAssistedAnalysisRateWindow       time.Duration
 	RuleSubmissionsEnabled              bool
 	RuleSubmissionWriteToken            string
 	RuleSubmissionCredentialLimit       int64
@@ -64,6 +73,11 @@ func Load() Config {
 		OpenAIAPIKey:                        os.Getenv("OPENAI_API_KEY"),
 		GeminiAPIKey:                        os.Getenv("GEMINI_API_KEY"),
 		DeepSeekAPIKey:                      os.Getenv("DEEPSEEK_API_KEY"),
+		LLMAssistedAnalysisHTTPEnabled:      boolEnv("LLM_ASSISTED_ANALYSIS_HTTP_ENABLED"),
+		LLMAssistedAnalysisToken:            os.Getenv("LLM_ASSISTED_ANALYSIS_TOKEN"),
+		LLMAssistedAnalysisCredentialLimit:  int64Env("LLM_ASSISTED_ANALYSIS_CREDENTIAL_LIMIT", defaultLLMAssistedCredentialLimit),
+		LLMAssistedAnalysisGlobalLimit:      int64Env("LLM_ASSISTED_ANALYSIS_GLOBAL_LIMIT", defaultLLMAssistedGlobalLimit),
+		LLMAssistedAnalysisRateWindow:       durationEnv("LLM_ASSISTED_ANALYSIS_RATE_WINDOW", defaultLLMAssistedRateWindow),
 		RuleSubmissionsEnabled:              boolEnv("RULE_SUBMISSIONS_ENABLED"),
 		RuleSubmissionWriteToken:            os.Getenv("RULE_SUBMISSION_WRITE_TOKEN"),
 		RuleSubmissionCredentialLimit:       int64Env("RULE_SUBMISSION_CREDENTIAL_LIMIT", defaultSubmissionCredentialLimit),
@@ -99,6 +113,39 @@ func (c Config) Validate() error {
 			APIKey: credential,
 		}); err != nil {
 			return fmt.Errorf("LLM provider configuration is invalid: %w", err)
+		}
+	}
+
+	if c.LLMAssistedAnalysisHTTPEnabled {
+		if !c.LLMAssistanceEnabled {
+			return fmt.Errorf("LLM_ASSISTANCE_ENABLED must be true when assisted-analysis HTTP transport is enabled")
+		}
+		if strings.TrimSpace(c.LLMAssistedAnalysisToken) == "" {
+			return fmt.Errorf("LLM_ASSISTED_ANALYSIS_TOKEN is required when assisted-analysis HTTP transport is enabled")
+		}
+		if len(c.LLMAssistedAnalysisToken) < minLLMAssistedAnalysisTokenLength {
+			return fmt.Errorf("LLM_ASSISTED_ANALYSIS_TOKEN must be at least %d characters when assisted-analysis HTTP transport is enabled", minLLMAssistedAnalysisTokenLength)
+		}
+		if c.LLMAssistedAnalysisCredentialLimit <= 0 {
+			return fmt.Errorf("LLM_ASSISTED_ANALYSIS_CREDENTIAL_LIMIT must be positive when assisted-analysis HTTP transport is enabled")
+		}
+		if c.LLMAssistedAnalysisGlobalLimit <= 0 {
+			return fmt.Errorf("LLM_ASSISTED_ANALYSIS_GLOBAL_LIMIT must be positive when assisted-analysis HTTP transport is enabled")
+		}
+		if c.LLMAssistedAnalysisGlobalLimit < c.LLMAssistedAnalysisCredentialLimit {
+			return fmt.Errorf("LLM_ASSISTED_ANALYSIS_GLOBAL_LIMIT must be greater than or equal to LLM_ASSISTED_ANALYSIS_CREDENTIAL_LIMIT")
+		}
+		if c.LLMAssistedAnalysisRateWindow < time.Millisecond {
+			return fmt.Errorf("LLM_ASSISTED_ANALYSIS_RATE_WINDOW must be at least 1ms when assisted-analysis HTTP transport is enabled")
+		}
+		for name, token := range map[string]string{
+			"RULE_SUBMISSION_WRITE_TOKEN":       c.RuleSubmissionWriteToken,
+			"RULE_SUBMISSION_REVIEW_TOKEN":      c.RuleSubmissionReviewToken,
+			"RULE_SUBMISSION_PUBLICATION_TOKEN": c.RuleSubmissionPublicationToken,
+		} {
+			if token != "" && c.LLMAssistedAnalysisToken == token {
+				return fmt.Errorf("LLM_ASSISTED_ANALYSIS_TOKEN must be different from %s", name)
+			}
 		}
 	}
 
