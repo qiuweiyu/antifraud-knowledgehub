@@ -2,19 +2,24 @@
 
 This document defines the current contribution contract for new explainable anti-fraud rules in AntiFraud-KnowledgeHub.
 
-The goal is to make rule contributions consistent, auditable, safe to publish, and easy for maintainers to review. This document reflects the validator introduced in PR #7 and the Rules UI added in PR #8.
+The goal is to make rule contributions consistent, auditable, safe to publish, and easy for maintainers to review. The same `DraftRequest` contract is used by validation and the controlled submission workflow.
 
-> Scope: this format currently targets **new rule drafts**. It does not define community accounts, submission persistence, reviewer roles, approval states, or rule versioning.
+> Scope: this format targets **new rule drafts**. The repository now also implements a separate default-off controlled lifecycle for pending submission, human review and publication. That lifecycle does not turn this project into an anonymous public write service or a contributor account/RBAC system. See [Community Rule Workflow](community-rule-workflow.md).
 
-The bounded design for the next persistence step is documented in [Minimal Rule Submission Persistence Design](rule-submission-persistence-design.md). That design keeps pending submissions separate from executable `RiskRule` records and does not introduce a public write API yet.
+## Where rules and proposals live today
 
-## Where rules live today
-
-The current seed rule set is stored in:
+The seed rule set is stored in:
 
 `data/risk_rules.zh-CN.json`
 
-New rule contributions should follow the existing JSON structure and must pass the current rule-draft validator before a pull request is considered ready for human review.
+Executable rules are persisted as `RiskRule` records. Unreviewed controlled proposals are persisted separately as `RuleSubmission` records and do **not** enter the risk engine.
+
+There are therefore two supported contribution paths:
+
+1. normal open-source pull requests using this format and synthetic/anonymized examples, and
+2. a deployment-controlled, default-off HTTP workflow for maintainers that separates submission, terminal review and publication credentials.
+
+External contributors do not need access to the controlled bearer credentials in order to contribute through GitHub.
 
 ## Required fields
 
@@ -33,7 +38,7 @@ New rule contributions should follow the existing JSON structure and must pass t
 | --- | --- | --- |
 | `description` | optional | Short description of the suspicious signal. |
 | `weight` | optional in JSON shape, validated as an integer from 0 to 100 | Use the smallest weight that reasonably represents the signal. |
-| `enabled` | optional | Defaults to enabled when created through the API if omitted. |
+| `enabled` | optional | Defaults to enabled when created through the direct rule API if omitted; controlled publication preserves the approved stored value, including explicit `false`. |
 | `explanation` | optional but strongly recommended | Explain why the signal is suspicious in plain language. |
 | `recommendation` | optional but strongly recommended | Give a safe, practical action a user can take. |
 
@@ -181,6 +186,32 @@ Before approving a new rule contribution, a maintainer should confirm:
 - [ ] Tests or safe examples cover the intended match behavior when practical.
 - [ ] The contribution does not silently introduce a new rule type or external AI dependency.
 
+## Controlled submission, review and publication
+
+Deployments may enable the controlled workflow described in [Community Rule Workflow](community-rule-workflow.md).
+
+The lifecycle is intentionally split:
+
+```text
+Draft validation
+  -> pending RuleSubmission
+  -> approved/rejected terminal review + review event
+  -> approved-only publication
+  -> RiskRule + publication event
+```
+
+Important boundaries:
+
+- pending submissions never execute as `RiskRule` records,
+- approval does not publish a rule,
+- write, review and publication bearer credentials are independent,
+- review/publication actors are server-owned operational labels,
+- publication copies the approved stored snapshot rather than accepting rule fields from the publication request,
+- failed controlled review/publication paths are covered by zero-write security tests,
+- AI is not a final approval authority.
+
+The exact HTTP contracts and status codes are documented in [API](api.md).
+
 ## Pull request expectations
 
 For a new seed rule contribution:
@@ -190,5 +221,7 @@ For a new seed rule contribution:
 3. Add or update tests when the rule behavior requires new engine coverage.
 4. Run the repository checks described in `CONTRIBUTING.md`.
 5. In the pull request, explain the scam signal, expected matches, false-positive considerations, severity rationale, and any test evidence.
+
+For a contribution intended to enter through the controlled maintainer transport, external contributors should still provide the same evidence and safety context through the project's normal collaboration channel; repository bearer credentials should not be distributed merely to bypass the pull-request workflow.
 
 Keep each pull request scoped. A rule contribution should not also introduce authentication, reviewer roles, AI providers, unrelated UI changes, or large dependency upgrades unless those changes are the explicit purpose of a separate issue and review.
