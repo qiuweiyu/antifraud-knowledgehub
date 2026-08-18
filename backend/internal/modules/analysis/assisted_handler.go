@@ -26,6 +26,8 @@ type AssistanceService interface {
 	Assist(context.Context, llmassist.Input) llmassist.Outcome
 }
 
+type assistedAnalysisService = AssistanceService
+
 type AssistedAnalysisRequest struct {
 	Text string `json:"text"`
 }
