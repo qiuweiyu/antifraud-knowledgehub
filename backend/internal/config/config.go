@@ -35,6 +35,7 @@ type Config struct {
 	LLMAssistanceTimeout                time.Duration
 	OpenAIAPIKey                        string
 	GeminiAPIKey                        string
+	DeepSeekAPIKey                      string
 	RuleSubmissionsEnabled              bool
 	RuleSubmissionWriteToken            string
 	RuleSubmissionCredentialLimit       int64
@@ -62,6 +63,7 @@ func Load() Config {
 		LLMAssistanceTimeout:                durationEnv("LLM_ASSISTANCE_TIMEOUT", defaultLLMAssistanceTimeout),
 		OpenAIAPIKey:                        os.Getenv("OPENAI_API_KEY"),
 		GeminiAPIKey:                        os.Getenv("GEMINI_API_KEY"),
+		DeepSeekAPIKey:                      os.Getenv("DEEPSEEK_API_KEY"),
 		RuleSubmissionsEnabled:              boolEnv("RULE_SUBMISSIONS_ENABLED"),
 		RuleSubmissionWriteToken:            os.Getenv("RULE_SUBMISSION_WRITE_TOKEN"),
 		RuleSubmissionCredentialLimit:       int64Env("RULE_SUBMISSION_CREDENTIAL_LIMIT", defaultSubmissionCredentialLimit),
@@ -177,6 +179,11 @@ func (c Config) LLMAssistanceCredential() (string, error) {
 			return "", fmt.Errorf("GEMINI_API_KEY is required when Gemini LLM assistance is enabled")
 		}
 		return c.GeminiAPIKey, nil
+	case llmassist.ProviderDeepSeek:
+		if strings.TrimSpace(c.DeepSeekAPIKey) == "" {
+			return "", fmt.Errorf("DEEPSEEK_API_KEY is required when DeepSeek LLM assistance is enabled")
+		}
+		return c.DeepSeekAPIKey, nil
 	default:
 		return "", fmt.Errorf("LLM_ASSISTANCE_PROVIDER %q has no credential resolver in this build", c.LLMAssistanceProvider)
 	}
