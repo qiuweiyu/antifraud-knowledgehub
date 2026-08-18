@@ -97,7 +97,7 @@ func newAssistedRouteTestRouter(t *testing.T, service analysis.AssistanceService
 }
 
 func TestNewRouterDoesNotRegisterAssistedRouteWhenDisabled(t *testing.T) {
-	cfg := config.Config{}
+	cfg := config.Config{CORSAllowOrigins: []string{"*"}}
 	r := newRouter(cfg, zap.NewNop(), newAssistedRouterTestStore(t))
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/analysis/assisted", strings.NewReader(`{"text":"transfer now"}`))
 	req.Header.Set("Content-Type", "application/json")
