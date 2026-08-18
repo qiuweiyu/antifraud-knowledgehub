@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -130,4 +131,8 @@ func TestControlledReviewTransportRejectsPendingWithoutRiskRuleSideEffect(t *tes
 	if riskRuleCount != 0 {
 		t.Fatalf("rejection transport must not create RiskRule rows, got %d", riskRuleCount)
 	}
+}
+
+func uintToString(value uint) string {
+	return strconv.FormatUint(uint64(value), 10)
 }
