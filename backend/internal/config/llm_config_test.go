@@ -7,10 +7,13 @@ import (
 	"time"
 )
 
+const configurableOpenAITestModel = "gpt-configurable-test"
+
 func clearLLMAssistanceEnv(t *testing.T) {
 	t.Helper()
 	t.Setenv("LLM_ASSISTANCE_ENABLED", "")
 	t.Setenv("LLM_ASSISTANCE_PROVIDER", "")
+	t.Setenv("LLM_ASSISTANCE_MODEL", "")
 	t.Setenv("LLM_ASSISTANCE_TIMEOUT", "")
 	t.Setenv("OPENAI_API_KEY", "")
 	t.Setenv("OPENAI_MODEL", "")
@@ -20,9 +23,9 @@ func setValidOpenAIAssistanceEnv(t *testing.T) {
 	t.Helper()
 	t.Setenv("LLM_ASSISTANCE_ENABLED", "true")
 	t.Setenv("LLM_ASSISTANCE_PROVIDER", "openai")
+	t.Setenv("LLM_ASSISTANCE_MODEL", configurableOpenAITestModel)
 	t.Setenv("LLM_ASSISTANCE_TIMEOUT", "5s")
 	t.Setenv("OPENAI_API_KEY", "test-server-side-key")
-	t.Setenv("OPENAI_MODEL", "gpt-5.6")
 }
 
 func TestLLMAssistanceDefaultsDisabled(t *testing.T) {
@@ -32,8 +35,14 @@ func TestLLMAssistanceDefaultsDisabled(t *testing.T) {
 	if cfg.LLMAssistanceEnabled {
 		t.Fatal("LLM assistance must be disabled by default")
 	}
-	if cfg.LLMAssistanceProvider != "" || cfg.OpenAIAPIKey != "" || cfg.OpenAIModel != "" {
-		t.Fatalf("provider-specific settings should default empty: %+v", cfg)
+	if cfg.LLMAssistanceProvider != "" {
+		t.Fatalf("provider should default empty, got %q", cfg.LLMAssistanceProvider)
+	}
+	if cfg.LLMAssistanceModel != "" {
+		t.Fatalf("model should default empty, got %q", cfg.LLMAssistanceModel)
+	}
+	if cfg.OpenAIAPIKey != "" {
+		t.Fatal("OpenAI API key should default empty")
 	}
 	if cfg.LLMAssistanceTimeout != 5*time.Second {
 		t.Fatalf("expected 5s default timeout, got %s", cfg.LLMAssistanceTimeout)
@@ -43,12 +52,13 @@ func TestLLMAssistanceDefaultsDisabled(t *testing.T) {
 	}
 }
 
-func TestLLMAssistanceDisabledDoesNotRequireOpenAIConfiguration(t *testing.T) {
+func TestLLMAssistanceDisabledDoesNotRequireProviderConfiguration(t *testing.T) {
 	clearLLMAssistanceEnv(t)
-	t.Setenv("OPENAI_MODEL", "unsupported-while-disabled")
+	t.Setenv("LLM_ASSISTANCE_PROVIDER", "future-provider")
+	t.Setenv("LLM_ASSISTANCE_MODEL", "future-model")
 
 	if err := Load().Validate(); err != nil {
-		t.Fatalf("disabled LLM assistance must ignore provider-specific activation values: %v", err)
+		t.Fatalf("disabled LLM assistance must ignore inactive provider values: %v", err)
 	}
 }
 
@@ -56,7 +66,7 @@ func TestLLMAssistanceInvalidBooleanFailsClosed(t *testing.T) {
 	clearLLMAssistanceEnv(t)
 	t.Setenv("LLM_ASSISTANCE_ENABLED", "definitely")
 	t.Setenv("LLM_ASSISTANCE_PROVIDER", "not-openai")
-	t.Setenv("OPENAI_MODEL", "not-allowed")
+	t.Setenv("LLM_ASSISTANCE_MODEL", "not-used")
 
 	cfg := Load()
 	if cfg.LLMAssistanceEnabled {
@@ -67,25 +77,35 @@ func TestLLMAssistanceInvalidBooleanFailsClosed(t *testing.T) {
 	}
 }
 
-func TestLLMAssistanceOpenAIConfigurationValidates(t *testing.T) {
+func TestLLMAssistanceOpenAIConfigurationValidatesConfigurableModel(t *testing.T) {
 	setValidOpenAIAssistanceEnv(t)
 	t.Setenv("LLM_ASSISTANCE_PROVIDER", " openai ")
 	t.Setenv("OPENAI_API_KEY", "  test-server-side-key  ")
-	t.Setenv("OPENAI_MODEL", " gpt-5.6 ")
+	t.Setenv("LLM_ASSISTANCE_MODEL", " model-selected-at-runtime ")
 
 	cfg := Load()
 	if !cfg.LLMAssistanceEnabled {
 		t.Fatal("expected LLM assistance enabled")
 	}
-	if cfg.LLMAssistanceProvider != "openai" || cfg.OpenAIModel != "gpt-5.6" {
-		t.Fatalf("provider/model should be trimmed: %+v", cfg)
+	if cfg.LLMAssistanceProvider != "openai" {
+		t.Fatalf("provider = %q", cfg.LLMAssistanceProvider)
+	}
+	if cfg.LLMAssistanceModel != "model-selected-at-runtime" {
+		t.Fatalf("model = %q", cfg.LLMAssistanceModel)
 	}
 	if err := cfg.Validate(); err != nil {
-		t.Fatalf("valid OpenAI assistance config rejected: %v", err)
+		t.Fatalf("valid configurable OpenAI assistance config rejected: %v", err)
+	}
+	credential, err := cfg.LLMAssistanceCredential()
+	if err != nil {
+		t.Fatalf("resolve credential: %v", err)
+	}
+	if strings.TrimSpace(credential) != "test-server-side-key" {
+		t.Fatal("unexpected resolved OpenAI credential")
 	}
 }
 
-func TestLLMAssistanceOpenAIConfigurationRejectsInvalidActivation(t *testing.T) {
+func TestLLMAssistanceConfigurationRejectsInvalidActivation(t *testing.T) {
 	tests := []struct {
 		name  string
 		key   string
@@ -94,9 +114,11 @@ func TestLLMAssistanceOpenAIConfigurationRejectsInvalidActivation(t *testing.T) 
 	}{
 		{name: "invalid timeout", key: "LLM_ASSISTANCE_TIMEOUT", value: "not-a-duration", want: "LLM_ASSISTANCE_TIMEOUT"},
 		{name: "too small timeout", key: "LLM_ASSISTANCE_TIMEOUT", value: "0s", want: "LLM_ASSISTANCE_TIMEOUT"},
-		{name: "wrong provider", key: "LLM_ASSISTANCE_PROVIDER", value: "other", want: "LLM_ASSISTANCE_PROVIDER"},
+		{name: "unregistered provider", key: "LLM_ASSISTANCE_PROVIDER", value: "gemini", want: "LLM_ASSISTANCE_PROVIDER"},
 		{name: "blank key", key: "OPENAI_API_KEY", value: "   ", want: "OPENAI_API_KEY"},
-		{name: "wrong model", key: "OPENAI_MODEL", value: "other-model", want: "OPENAI_MODEL"},
+		{name: "blank model", key: "LLM_ASSISTANCE_MODEL", value: "   ", want: "LLM_ASSISTANCE_MODEL"},
+		{name: "control character model", key: "LLM_ASSISTANCE_MODEL", value: "bad\nmodel", want: "LLM_ASSISTANCE_MODEL"},
+		{name: "overlong model", key: "LLM_ASSISTANCE_MODEL", value: strings.Repeat("m", 129), want: "LLM_ASSISTANCE_MODEL"},
 	}
 
 	for _, tc := range tests {
@@ -111,7 +133,7 @@ func TestLLMAssistanceOpenAIConfigurationRejectsInvalidActivation(t *testing.T) 
 	}
 }
 
-func TestLLMAssistanceConfigHasNoGenericOrOpenAIEndpointOverride(t *testing.T) {
+func TestLLMAssistanceConfigHasGenericModelButNoGenericCredentialOrEndpoint(t *testing.T) {
 	typeInfo := reflect.TypeOf(Config{})
 	for _, forbidden := range []string{
 		"LLMAPIKey",
@@ -121,15 +143,16 @@ func TestLLMAssistanceConfigHasNoGenericOrOpenAIEndpointOverride(t *testing.T) {
 		"LLMAssistanceBaseURL",
 		"OpenAIBaseURL",
 		"OpenAIEndpoint",
+		"OpenAIModel",
 	} {
 		if _, ok := typeInfo.FieldByName(forbidden); ok {
-			t.Fatalf("config must not expose generic/arbitrary provider endpoint field %s", forbidden)
+			t.Fatalf("config must not expose deprecated/generic unsafe field %s", forbidden)
 		}
 	}
 	if _, ok := typeInfo.FieldByName("OpenAIAPIKey"); !ok {
-		t.Fatal("bounded OpenAI provider must expose its server-side API key field")
+		t.Fatal("OpenAI provider must retain its provider-specific server-side API key field")
 	}
-	if _, ok := typeInfo.FieldByName("OpenAIModel"); !ok {
-		t.Fatal("bounded OpenAI provider must expose its allowlisted model field")
+	if _, ok := typeInfo.FieldByName("LLMAssistanceModel"); !ok {
+		t.Fatal("config must expose generic LLM model selection")
 	}
 }
