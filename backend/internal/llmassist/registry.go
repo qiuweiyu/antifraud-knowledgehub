@@ -9,6 +9,7 @@ import (
 const (
 	ProviderOpenAI          = "openai"
 	ProviderGemini          = "gemini"
+	ProviderDeepSeek        = "deepseek"
 	maxProviderNameBytes    = 32
 	maxModelIdentifierBytes = 128
 )
@@ -39,6 +40,11 @@ func NewDefaultRegistry() (*Registry, error) {
 	}
 	if err := registry.Register(ProviderGemini, func(cfg ProviderConfig) (Provider, error) {
 		return NewGeminiProvider(cfg.APIKey, cfg.Model)
+	}); err != nil {
+		return nil, err
+	}
+	if err := registry.Register(ProviderDeepSeek, func(cfg ProviderConfig) (Provider, error) {
+		return NewDeepSeekProvider(cfg.APIKey, cfg.Model)
 	}); err != nil {
 		return nil, err
 	}
