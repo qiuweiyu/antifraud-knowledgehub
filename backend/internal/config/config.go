@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/antifraud-knowledgehub/antifraud-knowledgehub/backend/internal/llmassist"
 )
 
 const (
@@ -18,8 +20,6 @@ const (
 	defaultSubmissionGlobalLimit        int64 = 50
 	defaultSubmissionRateWindow               = 10 * time.Minute
 	defaultLLMAssistanceTimeout                = 5 * time.Second
-	supportedLLMAssistanceProvider             = "openai"
-	supportedOpenAIModel                       = "gpt-5.6"
 )
 
 type Config struct {
@@ -31,9 +31,9 @@ type Config struct {
 	CORSAllowOrigins                    []string
 	LLMAssistanceEnabled                bool
 	LLMAssistanceProvider               string
+	LLMAssistanceModel                  string
 	LLMAssistanceTimeout                time.Duration
 	OpenAIAPIKey                        string
-	OpenAIModel                         string
 	RuleSubmissionsEnabled              bool
 	RuleSubmissionWriteToken            string
 	RuleSubmissionCredentialLimit       int64
@@ -57,9 +57,9 @@ func Load() Config {
 		CORSAllowOrigins:                    splitEnv("CORS_ALLOW_ORIGINS", []string{"http://localhost:5173", "http://localhost:3000"}),
 		LLMAssistanceEnabled:                boolEnv("LLM_ASSISTANCE_ENABLED"),
 		LLMAssistanceProvider:               strings.TrimSpace(os.Getenv("LLM_ASSISTANCE_PROVIDER")),
+		LLMAssistanceModel:                  strings.TrimSpace(os.Getenv("LLM_ASSISTANCE_MODEL")),
 		LLMAssistanceTimeout:                durationEnv("LLM_ASSISTANCE_TIMEOUT", defaultLLMAssistanceTimeout),
 		OpenAIAPIKey:                        os.Getenv("OPENAI_API_KEY"),
-		OpenAIModel:                         strings.TrimSpace(os.Getenv("OPENAI_MODEL")),
 		RuleSubmissionsEnabled:              boolEnv("RULE_SUBMISSIONS_ENABLED"),
 		RuleSubmissionWriteToken:            os.Getenv("RULE_SUBMISSION_WRITE_TOKEN"),
 		RuleSubmissionCredentialLimit:       int64Env("RULE_SUBMISSION_CREDENTIAL_LIMIT", defaultSubmissionCredentialLimit),
@@ -79,14 +79,14 @@ func (c Config) Validate() error {
 		if c.LLMAssistanceTimeout < time.Millisecond {
 			return fmt.Errorf("LLM_ASSISTANCE_TIMEOUT must be at least 1ms when LLM assistance is enabled")
 		}
-		if c.LLMAssistanceProvider != supportedLLMAssistanceProvider {
-			return fmt.Errorf("LLM_ASSISTANCE_PROVIDER must be %q when LLM assistance is enabled", supportedLLMAssistanceProvider)
+		if c.LLMAssistanceProvider != llmassist.ProviderOpenAI {
+			return fmt.Errorf("LLM_ASSISTANCE_PROVIDER %q is not registered in this build", c.LLMAssistanceProvider)
 		}
-		if strings.TrimSpace(c.OpenAIAPIKey) == "" {
-			return fmt.Errorf("OPENAI_API_KEY is required when OpenAI LLM assistance is enabled")
+		if _, err := llmassist.NormalizeModelIdentifier(c.LLMAssistanceModel); err != nil {
+			return fmt.Errorf("LLM_ASSISTANCE_MODEL is invalid: %w", err)
 		}
-		if c.OpenAIModel != supportedOpenAIModel {
-			return fmt.Errorf("OPENAI_MODEL must be %q when OpenAI LLM assistance is enabled", supportedOpenAIModel)
+		if _, err := c.LLMAssistanceCredential(); err != nil {
+			return err
 		}
 	}
 
@@ -153,6 +153,18 @@ func (c Config) Validate() error {
 	}
 
 	return nil
+}
+
+func (c Config) LLMAssistanceCredential() (string, error) {
+	switch c.LLMAssistanceProvider {
+	case llmassist.ProviderOpenAI:
+		if strings.TrimSpace(c.OpenAIAPIKey) == "" {
+			return "", fmt.Errorf("OPENAI_API_KEY is required when OpenAI LLM assistance is enabled")
+		}
+		return c.OpenAIAPIKey, nil
+	default:
+		return "", fmt.Errorf("LLM_ASSISTANCE_PROVIDER %q has no credential resolver in this build", c.LLMAssistanceProvider)
+	}
 }
 
 func (c Config) IsProduction() bool {

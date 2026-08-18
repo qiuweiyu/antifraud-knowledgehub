@@ -12,6 +12,8 @@ import (
 	"github.com/antifraud-knowledgehub/antifraud-knowledgehub/backend/internal/riskengine"
 )
 
+const testOpenAIModel = "gpt-configurable-test"
+
 type recordingDoer struct {
 	calls int
 	do    func(*http.Request) (*http.Response, error)
@@ -90,19 +92,25 @@ func testRuleResult() riskengine.Result {
 }
 
 func TestNewOpenAIProviderValidatesConfiguration(t *testing.T) {
-	if _, err := NewOpenAIProvider("   ", OpenAIModelGPT56); err == nil {
+	if _, err := NewOpenAIProvider("   ", testOpenAIModel); err == nil {
 		t.Fatal("blank API key must be rejected")
 	}
-	if _, err := NewOpenAIProvider("secret", "another-model"); err == nil {
-		t.Fatal("unsupported model must be rejected")
+	if _, err := NewOpenAIProvider("secret", "   "); err == nil {
+		t.Fatal("blank model must be rejected")
 	}
-	if _, err := newOpenAIProviderWithDoer("secret", OpenAIModelGPT56, nil); err == nil {
+	if _, err := NewOpenAIProvider("secret", "bad\nmodel"); err == nil {
+		t.Fatal("model containing control characters must be rejected")
+	}
+	if _, err := NewOpenAIProvider("secret", "model-selected-at-runtime"); err != nil {
+		t.Fatalf("safe runtime-selected model must be accepted: %v", err)
+	}
+	if _, err := newOpenAIProviderWithDoer("secret", testOpenAIModel, nil); err == nil {
 		t.Fatal("nil HTTP client must be rejected")
 	}
 }
 
 func TestNewOpenAIProviderDisablesRedirectFollowing(t *testing.T) {
-	provider, err := NewOpenAIProvider("secret", OpenAIModelGPT56)
+	provider, err := NewOpenAIProvider("secret", testOpenAIModel)
 	if err != nil {
 		t.Fatalf("construct provider: %v", err)
 	}
@@ -149,8 +157,8 @@ func TestOpenAIProviderRequestContractAndPromptIsolation(t *testing.T) {
 		if err := json.Unmarshal(body, &request); err != nil {
 			t.Fatalf("decode request: %v", err)
 		}
-		if request["model"] != OpenAIModelGPT56 {
-			t.Fatalf("model = %#v", request["model"])
+		if request["model"] != testOpenAIModel {
+			t.Fatalf("configured model was not transmitted unchanged: %#v", request["model"])
 		}
 		if request["instructions"] != openAIInstructions {
 			t.Fatal("instructions drifted")
@@ -220,7 +228,7 @@ func TestOpenAIProviderRequestContractAndPromptIsolation(t *testing.T) {
 		return completedOpenAIResponse(t, validAssistanceJSON(t)), nil
 	}
 
-	provider, err := newOpenAIProviderWithDoer(apiKey, OpenAIModelGPT56, doer)
+	provider, err := newOpenAIProviderWithDoer(apiKey, testOpenAIModel, doer)
 	if err != nil {
 		t.Fatalf("construct provider: %v", err)
 	}
@@ -251,7 +259,7 @@ func TestOpenAIProviderRejectsInputBeforeHTTP(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			doer := &recordingDoer{}
-			provider, err := newOpenAIProviderWithDoer("secret", OpenAIModelGPT56, doer)
+			provider, err := newOpenAIProviderWithDoer("secret", testOpenAIModel, doer)
 			if err != nil {
 				t.Fatalf("construct provider: %v", err)
 			}
@@ -305,7 +313,7 @@ func TestOpenAIProviderFailureSemanticsDoNotLeakSecret(t *testing.T) {
 				}
 				return tc.response, nil
 			}}
-			provider, err := newOpenAIProviderWithDoer(apiKey, OpenAIModelGPT56, doer)
+			provider, err := newOpenAIProviderWithDoer(apiKey, testOpenAIModel, doer)
 			if err != nil {
 				t.Fatalf("construct provider: %v", err)
 			}
@@ -343,7 +351,7 @@ func TestOpenAIProviderRequiresExactlyOneStructuredOutput(t *testing.T) {
 		}},
 	})
 	doer := &recordingDoer{do: func(_ *http.Request) (*http.Response, error) { return response, nil }}
-	provider, err := newOpenAIProviderWithDoer("secret", OpenAIModelGPT56, doer)
+	provider, err := newOpenAIProviderWithDoer("secret", testOpenAIModel, doer)
 	if err != nil {
 		t.Fatalf("construct provider: %v", err)
 	}
