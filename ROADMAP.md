@@ -75,10 +75,13 @@ Delivered foundation:
 - [x] Bounded Gemini `generateContent` adapter
 - [x] Provider-specific Gemini credential and model-path validation
 - [x] Zero-real-provider-call fake-HTTP coverage for Gemini
+- [x] Bounded DeepSeek `/chat/completions` adapter
+- [x] Explicit DeepSeek JSON Output with thinking disabled
+- [x] Provider-specific DeepSeek credential handling
+- [x] Zero-real-provider-call fake-HTTP coverage for DeepSeek
 
 Current multi-provider work:
 
-- [ ] DeepSeek adapter
 - [ ] Shared provider conformance tests
 - [ ] Explicit opt-in assisted-analysis HTTP transport with independent authorization/rate/cost controls
 - [ ] Frontend provider/model selection only after the transport is frozen
