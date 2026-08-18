@@ -8,6 +8,7 @@ import (
 
 const (
 	ProviderOpenAI          = "openai"
+	ProviderGemini          = "gemini"
 	maxProviderNameBytes    = 32
 	maxModelIdentifierBytes = 128
 )
@@ -33,6 +34,11 @@ func NewDefaultRegistry() (*Registry, error) {
 	registry := NewRegistry()
 	if err := registry.Register(ProviderOpenAI, func(cfg ProviderConfig) (Provider, error) {
 		return NewOpenAIProvider(cfg.APIKey, cfg.Model)
+	}); err != nil {
+		return nil, err
+	}
+	if err := registry.Register(ProviderGemini, func(cfg ProviderConfig) (Provider, error) {
+		return NewGeminiProvider(cfg.APIKey, cfg.Model)
 	}); err != nil {
 		return nil, err
 	}

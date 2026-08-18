@@ -98,7 +98,7 @@ func TestNormalizeModelIdentifier(t *testing.T) {
 	}
 }
 
-func TestDefaultRegistryContainsConfigurableOpenAI(t *testing.T) {
+func TestDefaultRegistryContainsConfiguredProviders(t *testing.T) {
 	registry, err := NewDefaultRegistry()
 	if err != nil {
 		t.Fatalf("default registry: %v", err)
@@ -106,18 +106,37 @@ func TestDefaultRegistryContainsConfigurableOpenAI(t *testing.T) {
 	if !registry.Has(ProviderOpenAI) {
 		t.Fatal("default registry must contain OpenAI")
 	}
-	provider, err := registry.Create(ProviderOpenAI, ProviderConfig{
+	if !registry.Has(ProviderGemini) {
+		t.Fatal("default registry must contain Gemini")
+	}
+
+	openAIProviderValue, err := registry.Create(ProviderOpenAI, ProviderConfig{
 		Model:  "gpt-configurable-test",
 		APIKey: "test-secret",
 	})
 	if err != nil {
 		t.Fatalf("create configured OpenAI provider: %v", err)
 	}
-	openAI, ok := provider.(*openAIProvider)
+	openAI, ok := openAIProviderValue.(*openAIProvider)
 	if !ok {
-		t.Fatalf("unexpected provider type %T", provider)
+		t.Fatalf("unexpected OpenAI provider type %T", openAIProviderValue)
 	}
 	if openAI.model != "gpt-configurable-test" {
 		t.Fatalf("OpenAI provider model = %q", openAI.model)
+	}
+
+	geminiProviderValue, err := registry.Create(ProviderGemini, ProviderConfig{
+		Model:  "gemini-configurable-test",
+		APIKey: "gemini-test-secret",
+	})
+	if err != nil {
+		t.Fatalf("create configured Gemini provider: %v", err)
+	}
+	gemini, ok := geminiProviderValue.(*geminiProvider)
+	if !ok {
+		t.Fatalf("unexpected Gemini provider type %T", geminiProviderValue)
+	}
+	if gemini.model != "gemini-configurable-test" {
+		t.Fatalf("Gemini provider model = %q", gemini.model)
 	}
 }

@@ -67,15 +67,17 @@ Delivered foundation:
 - [x] Bounded supplemental output validation
 - [x] Prompt-injection and no-tool safety boundary
 - [x] Disabled-by-default configuration foundation
-- [x] First bounded OpenAI Responses adapter
+- [x] Provider Registry / Factory
+- [x] Generic runtime `LLM_ASSISTANCE_MODEL` configuration
+- [x] OpenAI adapter migrated to Registry and configurable model selection
+- [x] Bounded OpenAI Responses adapter
 - [x] Zero-real-provider-call fake-HTTP CI coverage for OpenAI
+- [x] Bounded Gemini `generateContent` adapter
+- [x] Provider-specific Gemini credential and model-path validation
+- [x] Zero-real-provider-call fake-HTTP coverage for Gemini
 
 Current multi-provider work:
 
-- [ ] Provider Registry / Factory
-- [ ] Generic runtime `LLM_ASSISTANCE_MODEL` configuration
-- [ ] Migrate OpenAI adapter to Registry and configurable model
-- [ ] Gemini adapter
 - [ ] DeepSeek adapter
 - [ ] Shared provider conformance tests
 - [ ] Explicit opt-in assisted-analysis HTTP transport with independent authorization/rate/cost controls
