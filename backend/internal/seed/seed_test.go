@@ -105,7 +105,7 @@ func readSeedJSON[T any](t *testing.T, root, name string) []T {
 	return items
 }
 
-func assertNonEmptyStringList(t *testing.T, caseNumber int, title, field string, raw json.RawMessage) {
+func assertNonEmptyStringList(t *testing.T, caseNumber int, title, field string, raw []byte) {
 	t.Helper()
 	var values []string
 	if err := json.Unmarshal(raw, &values); err != nil {
