@@ -84,6 +84,14 @@ func newRouter(cfg config.Config, logger *zap.Logger, store *database.Store) *gi
 		)
 	}
 
+	if cfg.RuleSubmissionReviewsEnabled {
+		v1.POST(
+			"/rule-submissions/:id/reviews",
+			middleware.SubmissionReviewAuthorization(cfg.RuleSubmissionReviewToken),
+			rule.SubmissionReviewHandler(store.DB, cfg.RuleSubmissionReviewActorLabel),
+		)
+	}
+
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 	return r
 }
