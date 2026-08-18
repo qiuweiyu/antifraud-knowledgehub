@@ -10,11 +10,14 @@ import (
 	"time"
 
 	"github.com/antifraud-knowledgehub/antifraud-knowledgehub/backend/internal/config"
+	"github.com/antifraud-knowledgehub/antifraud-knowledgehub/backend/internal/database"
 	"github.com/antifraud-knowledgehub/antifraud-knowledgehub/backend/internal/llmassist"
 	"github.com/antifraud-knowledgehub/antifraud-knowledgehub/backend/internal/middleware"
 	"github.com/antifraud-knowledgehub/antifraud-knowledgehub/backend/internal/modules/analysis"
 	"github.com/gin-gonic/gin"
+	"github.com/glebarez/sqlite"
 	"go.uber.org/zap"
+	"gorm.io/gorm"
 )
 
 const serverAssistedToken = "abcdef0123456789abcdef0123456789"
@@ -42,6 +45,32 @@ func (b *serverAssistedRateBackend) Allow(_ context.Context, _ string, _ middlew
 	return b.allowed, b.err
 }
 
+func newAssistedRouterTestStore(t *testing.T) *database.Store {
+	t.Helper()
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open assisted route test DB: %v", err)
+	}
+	if err := db.AutoMigrate(&database.RiskRule{}, &database.AnalysisRecord{}); err != nil {
+		t.Fatalf("migrate assisted route test DB: %v", err)
+	}
+	if err := db.Create(&database.RiskRule{
+		Code:           "server_assisted_safe_account",
+		Name:           "安全账户风险",
+		CategoryCode:   "fake_customer_service",
+		RuleType:       "keyword",
+		Pattern:        "transfer now",
+		Weight:         45,
+		Severity:       "high",
+		Enabled:        true,
+		Explanation:    "Synthetic server assisted-analysis rule.",
+		Recommendation: "Verify through an independent official channel.",
+	}).Error; err != nil {
+		t.Fatalf("seed assisted route test rule: %v", err)
+	}
+	return &database.Store{DB: db}
+}
+
 func serverAssistedConfig() config.Config {
 	return config.Config{
 		LLMAssistedAnalysisHTTPEnabled:     true,
@@ -63,13 +92,13 @@ func newAssistedRouteTestRouter(t *testing.T, service analysis.AssistanceService
 	r := gin.New()
 	v1 := r.Group("/api/v1")
 	cfg := serverAssistedConfig()
-	registerLLMAssistedAnalysisRoute(v1, cfg, newRouterTestStore(t), service, backend)
+	registerLLMAssistedAnalysisRoute(v1, cfg, newAssistedRouterTestStore(t), service, backend)
 	return r, cfg
 }
 
 func TestNewRouterDoesNotRegisterAssistedRouteWhenDisabled(t *testing.T) {
 	cfg := config.Config{}
-	r := newRouter(cfg, zap.NewNop(), newRouterTestStore(t))
+	r := newRouter(cfg, zap.NewNop(), newAssistedRouterTestStore(t))
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/analysis/assisted", strings.NewReader(`{"text":"transfer now"}`))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+serverAssistedToken)
