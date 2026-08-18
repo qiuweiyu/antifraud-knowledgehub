@@ -83,6 +83,23 @@ func PublishApprovedSubmission(db *gorm.DB, submissionID uint, command Submissio
 
 		validation := ValidateDraft(tx, draftRequestFromSubmission(submission))
 		if !validation.Valid {
+			// A concurrent publisher can commit after the first event lookup but before
+			// validation. Re-check the same submission before returning validation so
+			// an identical command converges on the committed event instead of seeing
+			// the winner's RiskRule code as an unrelated duplicate.
+			var concurrentWinner database.RuleSubmissionPublicationEvent
+			concurrentErr := tx.Where("submission_id = ?", submission.ID).First(&concurrentWinner).Error
+			if concurrentErr == nil {
+				resolved, resolveErr := resolveExistingSubmissionPublication(tx, submission, concurrentWinner, normalized)
+				if resolveErr != nil {
+					return resolveErr
+				}
+				outcome = resolved
+				return nil
+			}
+			if !errors.Is(concurrentErr, gorm.ErrRecordNotFound) {
+				return concurrentErr
+			}
 			outcome.Validation = validation
 			return ErrSubmissionPublicationValidation
 		}
