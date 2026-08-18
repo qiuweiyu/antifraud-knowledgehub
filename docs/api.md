@@ -109,6 +109,66 @@ Important response statuses:
 
 The route is intentionally unavailable when the feature flag is disabled. Credentials, raw submission bodies, canonical JSON, and draft digests must not be logged.
 
+## Controlled Rule Submission Reviews
+
+`POST /api/v1/rule-submissions/{id}/reviews`
+
+This is the first controlled maintainer review mutation transport. It is registered only when `RULE_SUBMISSION_REVIEWS_ENABLED=true` and valid independent review credentials and a trusted actor label are configured. It is not public reviewer identity, OAuth, or RBAC.
+
+Requirements:
+
+- `Authorization: Bearer <RULE_SUBMISSION_REVIEW_TOKEN>`
+- the review token must be independent from `RULE_SUBMISSION_WRITE_TOKEN`
+- `Content-Type: application/json`
+- request body no larger than 16 KiB
+- `id` must be a positive decimal integer
+- JSON must be a single object containing only `decision` and `reason`
+- `decision` is `approved` or `rejected`
+- normalized `reason` is required and limited to 2,000 UTF-8 bytes
+- actor attribution comes only from `RULE_SUBMISSION_REVIEW_ACTOR_LABEL`
+
+Example request:
+
+```json
+{
+  "decision": "approved",
+  "reason": "Matches the documented fraud pattern and has an acceptable false-positive profile."
+}
+```
+
+A successful first review and an exact retry both return `200`. The response contains the terminal submission status, the single review-event ID, server-owned actor attribution, event creation time, and a `replay` flag. It does not return the review reason, draft snapshot, draft digest, review token, or publication state.
+
+Example success data:
+
+```json
+{
+  "success": true,
+  "data": {
+    "submission_id": 123,
+    "status": "approved",
+    "review_event_id": 456,
+    "decision": "approved",
+    "actor_kind": "controlled_maintainer",
+    "actor_label": "maintainer-console",
+    "created_at": "2026-08-18T11:30:00Z",
+    "replay": false
+  }
+}
+```
+
+Important response statuses:
+
+- `200` — terminal review committed, or exact review replay returned
+- `400` — invalid review JSON, invalid positive-decimal submission ID, decision, or reason
+- `401` — missing or invalid independent review credential
+- `404` — submission does not exist, or the review feature is disabled and the route is not registered
+- `409` — approval no longer passes current validation, or a different terminal review already exists
+- `413` — request body exceeds 16 KiB
+- `415` — unsupported content type
+- `500` — review integrity or unexpected persistence failure
+
+Approval means the proposal has been accepted for a future publication step. It does **not** create, update, enable, or otherwise publish a `RiskRule`. Exact review replay returns the existing review event; a different second decision, reason, or trusted actor attribution is a conflict. There is no review-specific Redis limiter in this transport slice.
+
 ## Cases
 
 - `GET /cases?q=&category_code=`
