@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strconv"
 	"strings"
 	"testing"
@@ -21,7 +22,7 @@ func reviewHandlerTestRouter(db *gorm.DB, actorLabel string) http.Handler {
 }
 
 func performReviewHandlerRequest(router http.Handler, id, contentType, body string) *httptest.ResponseRecorder {
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/rule-submissions/"+id+"/reviews", strings.NewReader(body))
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/rule-submissions/"+url.PathEscape(id)+"/reviews", strings.NewReader(body))
 	if contentType != "" {
 		req.Header.Set("Content-Type", contentType)
 	}
