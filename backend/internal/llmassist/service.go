@@ -5,6 +5,8 @@ import (
 	"errors"
 	"strings"
 	"time"
+
+	"github.com/antifraud-knowledgehub/antifraud-knowledgehub/backend/internal/riskengine"
 )
 
 const (
@@ -53,16 +55,7 @@ func (s Service) Assist(ctx context.Context, input Input) Outcome {
 func cloneInput(input Input) Input {
 	cloned := input
 	if input.RuleResult.MatchedRules != nil {
-		cloned.RuleResult.MatchedRules = append([]struct {
-			RuleCode       string `json:"rule_code"`
-			RuleName       string `json:"rule_name"`
-			CategoryCode   string `json:"category_code"`
-			Weight         int    `json:"weight"`
-			Severity       string `json:"severity"`
-			Evidence       string `json:"evidence"`
-			Explanation    string `json:"explanation"`
-			Recommendation string `json:"recommendation"`
-		}{}, input.RuleResult.MatchedRules...)
+		cloned.RuleResult.MatchedRules = append([]riskengine.MatchedRule(nil), input.RuleResult.MatchedRules...)
 	}
 	if input.RuleResult.Recommendations != nil {
 		cloned.RuleResult.Recommendations = append([]string(nil), input.RuleResult.Recommendations...)
