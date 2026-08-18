@@ -8,8 +8,9 @@ import (
 )
 
 const (
-	configurableOpenAITestModel = "gpt-configurable-test"
-	configurableGeminiTestModel = "gemini-configurable-test"
+	configurableOpenAITestModel  = "gpt-configurable-test"
+	configurableGeminiTestModel  = "gemini-configurable-test"
+	configurableDeepSeekTestModel = "deepseek-configurable-test"
 )
 
 func clearLLMAssistanceEnv(t *testing.T) {
@@ -20,6 +21,7 @@ func clearLLMAssistanceEnv(t *testing.T) {
 	t.Setenv("LLM_ASSISTANCE_TIMEOUT", "")
 	t.Setenv("OPENAI_API_KEY", "")
 	t.Setenv("GEMINI_API_KEY", "")
+	t.Setenv("DEEPSEEK_API_KEY", "")
 	t.Setenv("OPENAI_MODEL", "")
 }
 
@@ -43,6 +45,16 @@ func setValidGeminiAssistanceEnv(t *testing.T) {
 	t.Setenv("GEMINI_API_KEY", "gemini-test-server-side-key")
 }
 
+func setValidDeepSeekAssistanceEnv(t *testing.T) {
+	t.Helper()
+	clearLLMAssistanceEnv(t)
+	t.Setenv("LLM_ASSISTANCE_ENABLED", "true")
+	t.Setenv("LLM_ASSISTANCE_PROVIDER", "deepseek")
+	t.Setenv("LLM_ASSISTANCE_MODEL", configurableDeepSeekTestModel)
+	t.Setenv("LLM_ASSISTANCE_TIMEOUT", "5s")
+	t.Setenv("DEEPSEEK_API_KEY", "deepseek-test-server-side-key")
+}
+
 func TestLLMAssistanceDefaultsDisabled(t *testing.T) {
 	clearLLMAssistanceEnv(t)
 
@@ -56,7 +68,7 @@ func TestLLMAssistanceDefaultsDisabled(t *testing.T) {
 	if cfg.LLMAssistanceModel != "" {
 		t.Fatalf("model should default empty, got %q", cfg.LLMAssistanceModel)
 	}
-	if cfg.OpenAIAPIKey != "" || cfg.GeminiAPIKey != "" {
+	if cfg.OpenAIAPIKey != "" || cfg.GeminiAPIKey != "" || cfg.DeepSeekAPIKey != "" {
 		t.Fatal("provider API keys should default empty")
 	}
 	if cfg.LLMAssistanceTimeout != 5*time.Second {
@@ -145,6 +157,31 @@ func TestLLMAssistanceGeminiConfigurationValidates(t *testing.T) {
 	}
 }
 
+func TestLLMAssistanceDeepSeekConfigurationValidates(t *testing.T) {
+	setValidDeepSeekAssistanceEnv(t)
+	t.Setenv("LLM_ASSISTANCE_PROVIDER", " deepseek ")
+	t.Setenv("DEEPSEEK_API_KEY", "  deepseek-test-server-side-key  ")
+	t.Setenv("LLM_ASSISTANCE_MODEL", " deepseek-runtime-model-v4 ")
+
+	cfg := Load()
+	if cfg.LLMAssistanceProvider != "deepseek" {
+		t.Fatalf("provider = %q", cfg.LLMAssistanceProvider)
+	}
+	if cfg.LLMAssistanceModel != "deepseek-runtime-model-v4" {
+		t.Fatalf("model = %q", cfg.LLMAssistanceModel)
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("valid DeepSeek assistance config rejected: %v", err)
+	}
+	credential, err := cfg.LLMAssistanceCredential()
+	if err != nil {
+		t.Fatalf("resolve DeepSeek credential: %v", err)
+	}
+	if strings.TrimSpace(credential) != "deepseek-test-server-side-key" {
+		t.Fatal("unexpected resolved DeepSeek credential")
+	}
+}
+
 func TestLLMAssistanceConfigurationRejectsInvalidActivation(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -154,7 +191,7 @@ func TestLLMAssistanceConfigurationRejectsInvalidActivation(t *testing.T) {
 	}{
 		{name: "invalid timeout", key: "LLM_ASSISTANCE_TIMEOUT", value: "not-a-duration", want: "LLM_ASSISTANCE_TIMEOUT"},
 		{name: "too small timeout", key: "LLM_ASSISTANCE_TIMEOUT", value: "0s", want: "LLM_ASSISTANCE_TIMEOUT"},
-		{name: "unregistered provider", key: "LLM_ASSISTANCE_PROVIDER", value: "deepseek", want: "credential resolver"},
+		{name: "unregistered provider", key: "LLM_ASSISTANCE_PROVIDER", value: "future-provider", want: "credential resolver"},
 		{name: "blank key", key: "OPENAI_API_KEY", value: "   ", want: "OPENAI_API_KEY"},
 		{name: "blank model", key: "LLM_ASSISTANCE_MODEL", value: "   ", want: "LLM_ASSISTANCE_MODEL"},
 		{name: "control character model", key: "LLM_ASSISTANCE_MODEL", value: "bad\nmodel", want: "LLM_ASSISTANCE_MODEL"},
@@ -187,6 +224,14 @@ func TestLLMAssistanceGeminiConfigurationRejectsMissingKeyAndUnsafeModel(t *test
 	}
 }
 
+func TestLLMAssistanceDeepSeekConfigurationRejectsMissingKey(t *testing.T) {
+	setValidDeepSeekAssistanceEnv(t)
+	t.Setenv("DEEPSEEK_API_KEY", "   ")
+	if err := Load().Validate(); err == nil || !strings.Contains(err.Error(), "DEEPSEEK_API_KEY") {
+		t.Fatalf("blank DeepSeek key must fail closed, got %v", err)
+	}
+}
+
 func TestLLMAssistanceConfigHasProviderSpecificKeysButNoGenericCredentialOrEndpoint(t *testing.T) {
 	typeInfo := reflect.TypeOf(Config{})
 	for _, forbidden := range []string{
@@ -201,12 +246,15 @@ func TestLLMAssistanceConfigHasProviderSpecificKeysButNoGenericCredentialOrEndpo
 		"GeminiBaseURL",
 		"GeminiEndpoint",
 		"GeminiModel",
+		"DeepSeekBaseURL",
+		"DeepSeekEndpoint",
+		"DeepSeekModel",
 	} {
 		if _, ok := typeInfo.FieldByName(forbidden); ok {
 			t.Fatalf("config must not expose deprecated/generic unsafe field %s", forbidden)
 		}
 	}
-	for _, required := range []string{"OpenAIAPIKey", "GeminiAPIKey", "LLMAssistanceModel"} {
+	for _, required := range []string{"OpenAIAPIKey", "GeminiAPIKey", "DeepSeekAPIKey", "LLMAssistanceModel"} {
 		if _, ok := typeInfo.FieldByName(required); !ok {
 			t.Fatalf("config must expose %s", required)
 		}
