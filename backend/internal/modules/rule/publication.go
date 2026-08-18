@@ -15,11 +15,11 @@ const (
 )
 
 var (
-	ErrInvalidSubmissionPublication      = errors.New("invalid rule submission publication command")
-	ErrSubmissionNotPublishable          = errors.New("rule submission is not publishable")
-	ErrSubmissionPublicationValidation   = errors.New("rule submission publication validation failed")
-	ErrSubmissionPublicationConflict     = errors.New("rule submission publication conflict")
-	ErrSubmissionPublicationIntegrity    = errors.New("rule submission publication integrity violation")
+	ErrInvalidSubmissionPublication    = errors.New("invalid rule submission publication command")
+	ErrSubmissionNotPublishable        = errors.New("rule submission is not publishable")
+	ErrSubmissionPublicationValidation = errors.New("rule submission publication validation failed")
+	ErrSubmissionPublicationConflict   = errors.New("rule submission publication conflict")
+	ErrSubmissionPublicationIntegrity  = errors.New("rule submission publication integrity violation")
 )
 
 type SubmissionPublicationCommand struct {
@@ -94,6 +94,22 @@ func PublishApprovedSubmission(db *gorm.DB, submissionID uint, command Submissio
 		if err := tx.Create(&riskRule).Error; err != nil {
 			riskRuleInsertFailed = true
 			return fmt.Errorf("create published risk rule: %w", err)
+		}
+		// RiskRule.Enabled has a historical GORM default:true tag. GORM replaces a
+		// false zero value with that default during Create, so restore an explicitly
+		// approved false value inside the same transaction before publication commits.
+		// Other transactions cannot observe the intermediate uncommitted row.
+		if riskRule.Enabled != submission.Enabled {
+			result := tx.Model(&database.RiskRule{}).
+				Where("id = ?", riskRule.ID).
+				UpdateColumn("enabled", submission.Enabled)
+			if result.Error != nil {
+				return fmt.Errorf("preserve published risk rule enabled state: %w", result.Error)
+			}
+			if result.RowsAffected != 1 {
+				return fmt.Errorf("%w: published risk rule %d enabled state update affected %d rows", ErrSubmissionPublicationIntegrity, riskRule.ID, result.RowsAffected)
+			}
+			riskRule.Enabled = submission.Enabled
 		}
 
 		publicationEvent := database.RuleSubmissionPublicationEvent{
