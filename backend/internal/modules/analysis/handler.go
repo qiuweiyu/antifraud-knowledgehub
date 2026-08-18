@@ -38,16 +38,21 @@ type CategoryDistribution struct {
 func Register(r gin.IRoutes, db *gorm.DB) {
 	h := Handler{db: db}
 	r.POST("/analysis/text", h.analyze)
+	r.POST("/analysis/preview", h.preview)
 	r.GET("/analysis/recent", h.recent)
 	r.GET("/analysis/stats", h.stats)
 }
 
-func (h Handler) analyze(c *gin.Context) {
+func (h Handler) bindAnalyzeRequest(c *gin.Context) (AnalyzeRequest, bool) {
 	var req AnalyzeRequest
 	if err := c.ShouldBindJSON(&req); err != nil || req.Text == "" {
 		response.Fail(c, http.StatusBadRequest, "invalid_analysis_request", "text is required")
-		return
+		return AnalyzeRequest{}, false
 	}
+	return req, true
+}
+
+func (h Handler) analyzeText(text string) riskengine.Result {
 	var dbRules []database.RiskRule
 	h.db.Where("enabled = ?", true).Find(&dbRules)
 	rules := make([]riskengine.Rule, 0, len(dbRules))
@@ -58,7 +63,23 @@ func (h Handler) analyze(c *gin.Context) {
 			Explanation: item.Explanation, Recommendation: item.Recommendation,
 		})
 	}
-	result := riskengine.New(rules).Analyze(req.Text)
+	return riskengine.New(rules).Analyze(text)
+}
+
+func (h Handler) preview(c *gin.Context) {
+	req, ok := h.bindAnalyzeRequest(c)
+	if !ok {
+		return
+	}
+	response.OK(c, h.analyzeText(req.Text))
+}
+
+func (h Handler) analyze(c *gin.Context) {
+	req, ok := h.bindAnalyzeRequest(c)
+	if !ok {
+		return
+	}
+	result := h.analyzeText(req.Text)
 	matched, _ := json.Marshal(result.MatchedRules)
 	recs, _ := json.Marshal(result.Recommendations)
 	h.db.Create(&database.AnalysisRecord{
