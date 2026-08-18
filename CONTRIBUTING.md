@@ -55,4 +55,8 @@ See [Rule Contribution Format](docs/rule-contribution-format.md) for the current
 
 Contributors can validate a new rule draft before submission with the Rules-page **Validate Draft** UI or `POST /api/v1/rules/validate`. Validation checks structure and repository-backed constraints, but human review is still required.
 
+The normal external contribution path remains a scoped GitHub pull request. Deployments may additionally enable the repository's default-off controlled submission -> review -> publication transports for maintainers. Those transports use independent server-side credentials and are **not** anonymous public community-write APIs. External contributors should not request or publish repository bearer credentials merely to submit a rule.
+
+See [Community Rule Workflow](docs/community-rule-workflow.md) for the current implemented lifecycle, security boundaries and the distinction between ordinary PR contributions and controlled maintainer mutation endpoints.
+
 Case contributions must be synthetic or fully anonymized. Prefer short, structured examples that demonstrate a tactic without preserving real-world identifiers.
