@@ -79,10 +79,10 @@ Delivered foundation:
 - [x] Explicit DeepSeek JSON Output with thinking disabled
 - [x] Provider-specific DeepSeek credential handling
 - [x] Zero-real-provider-call fake-HTTP coverage for DeepSeek
+- [x] Shared provider conformance tests across OpenAI / Gemini / DeepSeek
 
 Current multi-provider work:
 
-- [ ] Shared provider conformance tests
 - [ ] Explicit opt-in assisted-analysis HTTP transport with independent authorization/rate/cost controls
 - [ ] Frontend provider/model selection only after the transport is frozen
 
