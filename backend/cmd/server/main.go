@@ -67,6 +67,10 @@ func newRouter(cfg config.Config, logger *zap.Logger, store *database.Store) *gi
 	caseitem.Register(v1, store.DB)
 	analysis.Register(v1, store.DB)
 
+	if cfg.LLMAssistedAnalysisHTTPEnabled {
+		registerConfiguredLLMAssistedAnalysisRoute(v1, cfg, store)
+	}
+
 	if cfg.RuleSubmissionsEnabled {
 		v1.POST(
 			"/rule-submissions",
