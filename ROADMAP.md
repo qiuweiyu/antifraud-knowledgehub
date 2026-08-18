@@ -1,5 +1,7 @@
 # Roadmap
 
+Provider protocol planning for the current multi-provider AI slice was re-verified against official provider documentation on 2026-08-19.
+
 AntiFraud-KnowledgeHub is an early-stage open-source project focused on building an explainable anti-fraud knowledge base and risk analysis toolkit for Chinese-speaking online scenarios.
 
 ## v0.1 MVP
