@@ -1,6 +1,7 @@
 package rule
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -52,7 +53,28 @@ func (h Handler) create(c *gin.Context) {
 		return
 	}
 	item := draft.riskRule()
-	if err := h.db.Create(&item).Error; err != nil {
+	if err := h.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&item).Error; err != nil {
+			return err
+		}
+		// RiskRule.Enabled retains a historical GORM default:true tag. When the
+		// client explicitly sends false, GORM can replace that zero value during
+		// Create. Restore the validated explicit intent inside the same transaction
+		// so no committed row or response can observe the wrong enabled state.
+		if draft.Enabled != nil && item.Enabled != *draft.Enabled {
+			updated := tx.Model(&database.RiskRule{}).
+				Where("id = ?", item.ID).
+				UpdateColumn("enabled", *draft.Enabled)
+			if updated.Error != nil {
+				return updated.Error
+			}
+			if updated.RowsAffected != 1 {
+				return fmt.Errorf("preserve direct rule enabled state: expected 1 row, updated %d", updated.RowsAffected)
+			}
+			item.Enabled = *draft.Enabled
+		}
+		return nil
+	}); err != nil {
 		response.Fail(c, http.StatusConflict, "rule_create_failed", err.Error())
 		return
 	}
