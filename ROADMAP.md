@@ -83,10 +83,16 @@ Delivered foundation:
 - [x] Explicit opt-in assisted-analysis HTTP transport design
 - [x] Explicit assisted-analysis HTTP transport with independent authorization and Redis rate/cost controls
 - [x] Deterministic-first assisted response with supplemental provider fallback and zero analysis-history persistence
+- [x] Safe frontend trust-boundary and server-owned Assisted AI Profile selection design
 
 Current multi-provider work:
 
-- [ ] Frontend provider/model selection only after the server-side assisted-analysis transport is green and re-audited
+- [ ] Server-owned Assisted AI Profile Registry + bounded non-secret metadata
+- [ ] Authenticated browser bridge design and implementation before any public SPA cost-bearing LLM call
+- [ ] Vue explicit assisted-analysis opt-in with third-party transfer disclosure
+- [ ] Optional Vue profile selector only for server-approved `profile_id` values after the authenticated bridge is green
+
+The public SPA must never embed the controlled assisted-analysis Bearer token or provider API keys. CORS is not an authentication boundary, and clients must not gain arbitrary provider/model/base-URL routing control.
 
 The LLM remains supplemental. It must not replace rule evidence, risk scoring, human review or official-channel verification.
 
@@ -108,7 +114,7 @@ Future browser work, if product need justifies it:
 
 - [ ] Packaging/store-distribution design
 - [ ] Cross-browser support
-- [ ] Explicit opt-in LLM-assisted browser flow only after the server-side assisted-analysis transport exists
+- [ ] Explicit opt-in LLM-assisted browser flow only after the server-side authenticated assisted-analysis bridge exists
 
 ## Long-term Vision
 
