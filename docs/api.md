@@ -245,7 +245,85 @@ The success response is audit/provenance-oriented. It does not return the rule s
 {"text":"客服说账户异常，需要转账到安全账户"}
 ```
 
-The response includes `risk_score`, `risk_level`, `matched_rules`, `summary` and `recommendations`.
+The response includes `risk_score`, `risk_level`, `matched_rules`, `summary` and `recommendations`. This historical route remains deterministic-only and writes its normal `AnalysisRecord`; configuring an LLM provider does not make this route send text to a third party.
+
+## Preview Analysis
+
+`POST /analysis/preview`
+
+Uses the same deterministic rule engine result but creates zero `AnalysisRecord` rows. It remains deterministic-only and never invokes the configured LLM provider.
+
+## Explicit Assisted Analysis
+
+`POST /analysis/assisted`
+
+This route is registered only when `LLM_ASSISTED_ANALYSIS_HTTP_ENABLED=true`. It is the first explicit opt-in, potentially cost-bearing route that may send submitted text and deterministic rule context to the server-configured third-party LLM provider.
+
+Requirements:
+
+- `LLM_ASSISTANCE_ENABLED=true` with a valid server-selected provider/model/credential;
+- `Authorization: Bearer <LLM_ASSISTED_ANALYSIS_TOKEN>` using a credential independent from rule submission/review/publication credentials;
+- Redis-backed per-credential and global assisted-analysis limits must be available;
+- `Content-Type: application/json`;
+- body no larger than 16 KiB;
+- a single strict JSON object containing only `text`;
+- source text must be non-blank and no larger than 12 KiB UTF-8;
+- clients cannot select provider, model, API key, base URL, tools, or provider options.
+
+Example request:
+
+```json
+{
+  "text": "客服称账户异常，要求立即转账到所谓安全账户"
+}
+```
+
+Example success data:
+
+```json
+{
+  "success": true,
+  "data": {
+    "rule_result": {
+      "risk_score": 80,
+      "risk_level": "high",
+      "matched_rules": [],
+      "summary": "...",
+      "recommendations": []
+    },
+    "llm_assistance": {
+      "status": "available",
+      "provider": "gemini",
+      "model": "server-configured-model",
+      "assistance": {
+        "summary": "...",
+        "observations": [],
+        "limitations": []
+      }
+    }
+  }
+}
+```
+
+`rule_result` is the authoritative deterministic anti-fraud result. `llm_assistance` is supplemental only. If the provider times out, refuses, returns malformed output, or is otherwise unavailable after deterministic analysis succeeds, the HTTP response remains `200`, the rule result is unchanged, and `llm_assistance.status` becomes `unavailable`; raw provider errors are never returned.
+
+The first assisted route creates zero `AnalysisRecord` rows and does not persist the prompt, provider response, or hidden reasoning. It also performs no automatic provider retry and makes no exactly-once execution or billing claim across client/network retries.
+
+Important response statuses before provider invocation:
+
+- `400` — invalid JSON/envelope/text
+- `401` — missing or invalid assisted-analysis Bearer credential
+- `404` — feature disabled and route therefore not registered
+- `413` — request body exceeds 16 KiB
+- `415` — unsupported content type
+- `429` — assisted-analysis rate limit exceeded
+- `503` — Redis limiter unavailable, or deterministic enabled-rule loading failed
+
+### Privacy boundary
+
+Calling `/analysis/assisted` is an explicit third-party data-transfer action. The server sends the submitted text plus deterministic rule context to the configured provider selected by the operator (`openai`, `gemini`, or `deepseek` in the current build). Provider retention and data-control behavior depends on that provider and the account configuration. Provider API credentials stay server-side and are never accepted from or returned to the caller.
+
+In contrast, `/analysis/text` and `/analysis/preview` do not invoke an LLM provider.
 
 ## Analysis Stats
 
