@@ -130,12 +130,11 @@ func TestOpenAIProviderRequestContractAndPromptIsolation(t *testing.T) {
 		if err := json.Unmarshal(body, &request); err != nil {
 			t.Fatalf("decode request: %v", err)
 		}
-
 		if request["model"] != OpenAIModelGPT56 {
 			t.Fatalf("model = %#v", request["model"])
 		}
 		if request["instructions"] != openAIInstructions {
-			t.Fatalf("instructions drifted")
+			t.Fatal("instructions drifted")
 		}
 		if strings.Contains(request["instructions"].(string), malicious) {
 			t.Fatal("untrusted text must not be concatenated into instructions")
@@ -187,7 +186,7 @@ func TestOpenAIProviderRequestContractAndPromptIsolation(t *testing.T) {
 
 		rendered, ok := request["input"].(string)
 		if !ok {
-			t.Fatalf("input must be a rendered JSON string")
+			t.Fatal("input must be a rendered JSON string")
 		}
 		var data openAIInputData
 		if err := json.Unmarshal([]byte(rendered), &data); err != nil {
@@ -199,7 +198,6 @@ func TestOpenAIProviderRequestContractAndPromptIsolation(t *testing.T) {
 		if data.DeterministicRuleResult.RiskScore != 80 || data.DeterministicRuleResult.RiskLevel != "high" {
 			t.Fatalf("deterministic result missing from input: %+v", data.DeterministicRuleResult)
 		}
-
 		return completedOpenAIResponse(validAssistanceJSON()), nil
 	}
 
@@ -228,12 +226,9 @@ func TestOpenAIProviderRejectsInputBeforeHTTP(t *testing.T) {
 		{name: "text over limit", input: Input{Text: strings.Repeat("x", maxOpenAIInputTextBytes+1)}},
 		{name: "rendered context over limit", input: Input{
 			Text: "small suspicious text",
-			RuleResult: riskengine.Result{
-				Recommendations: []string{strings.Repeat("r", maxOpenAIRenderedBytes)},
-			},
+			RuleResult: riskengine.Result{Recommendations: []string{strings.Repeat("r", maxOpenAIRenderedBytes)}},
 		}},
 	}
-
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			doer := &recordingDoer{}
@@ -253,54 +248,31 @@ func TestOpenAIProviderRejectsInputBeforeHTTP(t *testing.T) {
 
 func TestOpenAIProviderFailureSemanticsDoNotLeakSecret(t *testing.T) {
 	const apiKey = "super-secret-provider-key"
-
 	tests := []struct {
-		name       string
-		response   *http.Response
-		doErr      error
-		cancelCtx  bool
+		name      string
+		response  *http.Response
+		doErr     error
+		cancelCtx bool
 	}{
-		{
-			name: "non success",
-			response: &http.Response{StatusCode: http.StatusTooManyRequests, Body: io.NopCloser(strings.NewReader("provider says super-secret-provider-key"))},
-		},
-		{
-			name: "malformed JSON",
-			response: &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader("{"))},
-		},
-		{
-			name: "incomplete",
-			response: &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"status":"incomplete","output":[]}`))},
-		},
-		{
-			name: "refusal",
-			response: &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"refusal","refusal":"cannot comply"}]}]}`))},
-		},
-		{
-			name: "no output",
-			response: &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"status":"completed","output":[]}`))},
-		},
-		{
-			name: "malformed structured output",
-			response: completedOpenAIResponse(`{"summary":"ok","observations":[],"limitations":[],"verdict":"safe"}`),
-		},
-		{
-			name: "oversized response",
-			response: &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(strings.Repeat("x", maxOpenAIResponseBytes+1)))},
-		},
+		{name: "non success", response: &http.Response{StatusCode: http.StatusTooManyRequests, Body: io.NopCloser(strings.NewReader("provider says super-secret-provider-key"))}},
+		{name: "malformed JSON", response: &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader("{"))}},
+		{name: "incomplete", response: &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"status":"incomplete","output":[]}`))}},
+		{name: "refusal", response: &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"refusal","refusal":"cannot comply"}]}]}`))}},
+		{name: "no output", response: &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"status":"completed","output":[]}`))}},
+		{name: "malformed structured output", response: completedOpenAIResponse(`{"summary":"ok","observations":[],"limitations":[],"verdict":"safe"}`)},
+		{name: "oversized response", response: &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(strings.Repeat("x", maxOpenAIResponseBytes+1)))}},
 		{name: "network error", doErr: errors.New("network contains super-secret-provider-key")},
 		{name: "caller cancellation", cancelCtx: true},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			doer := &recordingDoer{}
-			doer.do = func(_ *http.Request) (*http.Response, error) {
+			doer := &recordingDoer{do: func(_ *http.Request) (*http.Response, error) {
 				if tc.doErr != nil {
 					return nil, tc.doErr
 				}
 				return tc.response, nil
-			}
+			}}
 			provider, err := newOpenAIProviderWithDoer(apiKey, OpenAIModelGPT56, doer)
 			if err != nil {
 				t.Fatalf("construct provider: %v", err)
