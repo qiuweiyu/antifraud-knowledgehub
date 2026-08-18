@@ -87,10 +87,7 @@ func TestSubmissionPublicationHandlerRejectsTransportInputWithoutWrites(t *testi
 			reviewBefore := mustGetReviewEvent(t, db, submission.ID)
 			id := tt.id
 			if id == "1" {
-				id = strings.TrimSpace(string(rune('0' + submission.ID)))
-				if submission.ID > 9 {
-					id = "1"
-				}
+				id = uintString(submission.ID)
 			}
 			resp := performPublicationHandlerRequest(db, id, tt.contentType, tt.body, publicationHandlerActor)
 			if resp.Code != tt.wantStatus {
