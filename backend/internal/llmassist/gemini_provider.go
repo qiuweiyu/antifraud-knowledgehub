@@ -221,6 +221,7 @@ func geminiAssistanceSchema() map[string]any {
 				"type":  "array",
 				"items": map[string]any{"type": "string"},
 			},
+		},
 	}
 }
 
