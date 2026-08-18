@@ -196,7 +196,7 @@ func durationEnv(key string, fallback time.Duration) time.Duration {
 	return parsed
 }
 
-func splitEnv(key, fallback []string) []string {
+func splitEnv(key string, fallback []string) []string {
 	value := os.Getenv(key)
 	if value == "" {
 		return fallback
