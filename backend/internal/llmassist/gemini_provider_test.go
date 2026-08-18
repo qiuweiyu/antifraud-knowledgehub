@@ -2,6 +2,7 @@ package llmassist
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -104,7 +105,7 @@ func TestGeminiProviderRequestContractAndPromptIsolation(t *testing.T) {
 			t.Fatalf("read request: %v", err)
 		}
 		var request map[string]any
-		if err := jsonUnmarshalForTest(body, &request); err != nil {
+		if err := json.Unmarshal(body, &request); err != nil {
 			t.Fatalf("decode request: %v", err)
 		}
 		if request["store"] != false {
@@ -153,7 +154,7 @@ func TestGeminiProviderRequestContractAndPromptIsolation(t *testing.T) {
 			t.Fatal("Gemini user part must contain rendered JSON string")
 		}
 		var inputData geminiInputData
-		if err := jsonUnmarshalForTest([]byte(rendered), &inputData); err != nil {
+		if err := json.Unmarshal([]byte(rendered), &inputData); err != nil {
 			t.Fatalf("decode rendered input: %v", err)
 		}
 		if inputData.SuspiciousText != malicious {
@@ -306,8 +307,4 @@ func TestGeminiProviderFailureSemanticsDoNotLeakSecret(t *testing.T) {
 			}
 		})
 	}
-}
-
-func jsonUnmarshalForTest(data []byte, out any) error {
-	return json.Unmarshal(data, out)
 }
