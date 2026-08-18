@@ -13,6 +13,10 @@ import (
 const bearerPrefix = "Bearer "
 
 func SubmissionWriteAuthorization(expectedToken string) gin.HandlerFunc {
+	return bearerTokenAuthorization(expectedToken)
+}
+
+func bearerTokenAuthorization(expectedToken string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		providedToken, ok := parseBearerToken(c.GetHeader("Authorization"))
 		if !ok || !secureTokenEqual(providedToken, expectedToken) {
