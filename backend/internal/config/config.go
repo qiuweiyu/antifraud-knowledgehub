@@ -10,63 +10,90 @@ import (
 
 const (
 	minSubmissionWriteTokenLength          = 32
+	minSubmissionReviewTokenLength         = 32
+	maxSubmissionReviewActorLabelBytes     = 120
 	defaultSubmissionCredentialLimit int64 = 5
 	defaultSubmissionGlobalLimit     int64 = 50
 	defaultSubmissionRateWindow            = 10 * time.Minute
 )
 
 type Config struct {
-	AppEnv                        string
-	AppPort                       string
-	DatabaseDriver                string
-	DatabaseDSN                   string
-	RedisAddr                     string
-	CORSAllowOrigins              []string
-	RuleSubmissionsEnabled        bool
-	RuleSubmissionWriteToken      string
-	RuleSubmissionCredentialLimit int64
-	RuleSubmissionGlobalLimit     int64
-	RuleSubmissionRateWindow      time.Duration
+	AppEnv                         string
+	AppPort                        string
+	DatabaseDriver                 string
+	DatabaseDSN                    string
+	RedisAddr                      string
+	CORSAllowOrigins               []string
+	RuleSubmissionsEnabled         bool
+	RuleSubmissionWriteToken       string
+	RuleSubmissionCredentialLimit  int64
+	RuleSubmissionGlobalLimit      int64
+	RuleSubmissionRateWindow       time.Duration
+	RuleSubmissionReviewsEnabled   bool
+	RuleSubmissionReviewToken      string
+	RuleSubmissionReviewActorLabel string
 }
 
 func Load() Config {
 	return Config{
-		AppEnv:                        getEnv("APP_ENV", "development"),
-		AppPort:                       getEnv("APP_PORT", "8080"),
-		DatabaseDriver:                getEnv("DATABASE_DRIVER", "postgres"),
-		DatabaseDSN:                   getEnv("DATABASE_DSN", "host=localhost user=postgres password=postgres dbname=antifraud port=5432 sslmode=disable TimeZone=Asia/Shanghai"),
-		RedisAddr:                     getEnv("REDIS_ADDR", "localhost:6379"),
-		CORSAllowOrigins:              splitEnv("CORS_ALLOW_ORIGINS", []string{"http://localhost:5173", "http://localhost:3000"}),
-		RuleSubmissionsEnabled:        boolEnv("RULE_SUBMISSIONS_ENABLED"),
-		RuleSubmissionWriteToken:      os.Getenv("RULE_SUBMISSION_WRITE_TOKEN"),
-		RuleSubmissionCredentialLimit: int64Env("RULE_SUBMISSION_CREDENTIAL_LIMIT", defaultSubmissionCredentialLimit),
-		RuleSubmissionGlobalLimit:     int64Env("RULE_SUBMISSION_GLOBAL_LIMIT", defaultSubmissionGlobalLimit),
-		RuleSubmissionRateWindow:      durationEnv("RULE_SUBMISSION_RATE_WINDOW", defaultSubmissionRateWindow),
+		AppEnv:                         getEnv("APP_ENV", "development"),
+		AppPort:                        getEnv("APP_PORT", "8080"),
+		DatabaseDriver:                 getEnv("DATABASE_DRIVER", "postgres"),
+		DatabaseDSN:                    getEnv("DATABASE_DSN", "host=localhost user=postgres password=postgres dbname=antifraud port=5432 sslmode=disable TimeZone=Asia/Shanghai"),
+		RedisAddr:                      getEnv("REDIS_ADDR", "localhost:6379"),
+		CORSAllowOrigins:               splitEnv("CORS_ALLOW_ORIGINS", []string{"http://localhost:5173", "http://localhost:3000"}),
+		RuleSubmissionsEnabled:         boolEnv("RULE_SUBMISSIONS_ENABLED"),
+		RuleSubmissionWriteToken:       os.Getenv("RULE_SUBMISSION_WRITE_TOKEN"),
+		RuleSubmissionCredentialLimit:  int64Env("RULE_SUBMISSION_CREDENTIAL_LIMIT", defaultSubmissionCredentialLimit),
+		RuleSubmissionGlobalLimit:      int64Env("RULE_SUBMISSION_GLOBAL_LIMIT", defaultSubmissionGlobalLimit),
+		RuleSubmissionRateWindow:       durationEnv("RULE_SUBMISSION_RATE_WINDOW", defaultSubmissionRateWindow),
+		RuleSubmissionReviewsEnabled:   boolEnv("RULE_SUBMISSION_REVIEWS_ENABLED"),
+		RuleSubmissionReviewToken:      os.Getenv("RULE_SUBMISSION_REVIEW_TOKEN"),
+		RuleSubmissionReviewActorLabel: os.Getenv("RULE_SUBMISSION_REVIEW_ACTOR_LABEL"),
 	}
 }
 
 func (c Config) Validate() error {
-	if !c.RuleSubmissionsEnabled {
-		return nil
+	if c.RuleSubmissionsEnabled {
+		if strings.TrimSpace(c.RuleSubmissionWriteToken) == "" {
+			return fmt.Errorf("rule submissions are enabled but RULE_SUBMISSION_WRITE_TOKEN is not configured")
+		}
+		if len(c.RuleSubmissionWriteToken) < minSubmissionWriteTokenLength {
+			return fmt.Errorf("RULE_SUBMISSION_WRITE_TOKEN must be at least %d characters when rule submissions are enabled", minSubmissionWriteTokenLength)
+		}
+		if c.RuleSubmissionCredentialLimit <= 0 {
+			return fmt.Errorf("RULE_SUBMISSION_CREDENTIAL_LIMIT must be positive when rule submissions are enabled")
+		}
+		if c.RuleSubmissionGlobalLimit <= 0 {
+			return fmt.Errorf("RULE_SUBMISSION_GLOBAL_LIMIT must be positive when rule submissions are enabled")
+		}
+		if c.RuleSubmissionGlobalLimit < c.RuleSubmissionCredentialLimit {
+			return fmt.Errorf("RULE_SUBMISSION_GLOBAL_LIMIT must be greater than or equal to RULE_SUBMISSION_CREDENTIAL_LIMIT")
+		}
+		if c.RuleSubmissionRateWindow < time.Millisecond {
+			return fmt.Errorf("RULE_SUBMISSION_RATE_WINDOW must be at least 1ms when rule submissions are enabled")
+		}
 	}
-	if strings.TrimSpace(c.RuleSubmissionWriteToken) == "" {
-		return fmt.Errorf("rule submissions are enabled but RULE_SUBMISSION_WRITE_TOKEN is not configured")
+
+	if c.RuleSubmissionReviewsEnabled {
+		if strings.TrimSpace(c.RuleSubmissionReviewToken) == "" {
+			return fmt.Errorf("rule submission reviews are enabled but RULE_SUBMISSION_REVIEW_TOKEN is not configured")
+		}
+		if len(c.RuleSubmissionReviewToken) < minSubmissionReviewTokenLength {
+			return fmt.Errorf("RULE_SUBMISSION_REVIEW_TOKEN must be at least %d characters when rule submission reviews are enabled", minSubmissionReviewTokenLength)
+		}
+		actorLabel := strings.TrimSpace(c.RuleSubmissionReviewActorLabel)
+		if actorLabel == "" {
+			return fmt.Errorf("rule submission reviews are enabled but RULE_SUBMISSION_REVIEW_ACTOR_LABEL is not configured")
+		}
+		if len([]byte(actorLabel)) > maxSubmissionReviewActorLabelBytes {
+			return fmt.Errorf("RULE_SUBMISSION_REVIEW_ACTOR_LABEL must be at most %d UTF-8 bytes when rule submission reviews are enabled", maxSubmissionReviewActorLabelBytes)
+		}
+		if c.RuleSubmissionWriteToken != "" && c.RuleSubmissionReviewToken == c.RuleSubmissionWriteToken {
+			return fmt.Errorf("RULE_SUBMISSION_REVIEW_TOKEN must be different from RULE_SUBMISSION_WRITE_TOKEN")
+		}
 	}
-	if len(c.RuleSubmissionWriteToken) < minSubmissionWriteTokenLength {
-		return fmt.Errorf("RULE_SUBMISSION_WRITE_TOKEN must be at least %d characters when rule submissions are enabled", minSubmissionWriteTokenLength)
-	}
-	if c.RuleSubmissionCredentialLimit <= 0 {
-		return fmt.Errorf("RULE_SUBMISSION_CREDENTIAL_LIMIT must be positive when rule submissions are enabled")
-	}
-	if c.RuleSubmissionGlobalLimit <= 0 {
-		return fmt.Errorf("RULE_SUBMISSION_GLOBAL_LIMIT must be positive when rule submissions are enabled")
-	}
-	if c.RuleSubmissionGlobalLimit < c.RuleSubmissionCredentialLimit {
-		return fmt.Errorf("RULE_SUBMISSION_GLOBAL_LIMIT must be greater than or equal to RULE_SUBMISSION_CREDENTIAL_LIMIT")
-	}
-	if c.RuleSubmissionRateWindow < time.Millisecond {
-		return fmt.Errorf("RULE_SUBMISSION_RATE_WINDOW must be at least 1ms when rule submissions are enabled")
-	}
+
 	return nil
 }
 
