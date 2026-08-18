@@ -7,7 +7,10 @@ import (
 	"time"
 )
 
-const configurableOpenAITestModel = "gpt-configurable-test"
+const (
+	configurableOpenAITestModel = "gpt-configurable-test"
+	configurableGeminiTestModel = "gemini-configurable-test"
+)
 
 func clearLLMAssistanceEnv(t *testing.T) {
 	t.Helper()
@@ -16,16 +19,28 @@ func clearLLMAssistanceEnv(t *testing.T) {
 	t.Setenv("LLM_ASSISTANCE_MODEL", "")
 	t.Setenv("LLM_ASSISTANCE_TIMEOUT", "")
 	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("GEMINI_API_KEY", "")
 	t.Setenv("OPENAI_MODEL", "")
 }
 
 func setValidOpenAIAssistanceEnv(t *testing.T) {
 	t.Helper()
+	clearLLMAssistanceEnv(t)
 	t.Setenv("LLM_ASSISTANCE_ENABLED", "true")
 	t.Setenv("LLM_ASSISTANCE_PROVIDER", "openai")
 	t.Setenv("LLM_ASSISTANCE_MODEL", configurableOpenAITestModel)
 	t.Setenv("LLM_ASSISTANCE_TIMEOUT", "5s")
 	t.Setenv("OPENAI_API_KEY", "test-server-side-key")
+}
+
+func setValidGeminiAssistanceEnv(t *testing.T) {
+	t.Helper()
+	clearLLMAssistanceEnv(t)
+	t.Setenv("LLM_ASSISTANCE_ENABLED", "true")
+	t.Setenv("LLM_ASSISTANCE_PROVIDER", "gemini")
+	t.Setenv("LLM_ASSISTANCE_MODEL", configurableGeminiTestModel)
+	t.Setenv("LLM_ASSISTANCE_TIMEOUT", "5s")
+	t.Setenv("GEMINI_API_KEY", "gemini-test-server-side-key")
 }
 
 func TestLLMAssistanceDefaultsDisabled(t *testing.T) {
@@ -41,8 +56,8 @@ func TestLLMAssistanceDefaultsDisabled(t *testing.T) {
 	if cfg.LLMAssistanceModel != "" {
 		t.Fatalf("model should default empty, got %q", cfg.LLMAssistanceModel)
 	}
-	if cfg.OpenAIAPIKey != "" {
-		t.Fatal("OpenAI API key should default empty")
+	if cfg.OpenAIAPIKey != "" || cfg.GeminiAPIKey != "" {
+		t.Fatal("provider API keys should default empty")
 	}
 	if cfg.LLMAssistanceTimeout != 5*time.Second {
 		t.Fatalf("expected 5s default timeout, got %s", cfg.LLMAssistanceTimeout)
@@ -105,6 +120,31 @@ func TestLLMAssistanceOpenAIConfigurationValidatesConfigurableModel(t *testing.T
 	}
 }
 
+func TestLLMAssistanceGeminiConfigurationValidates(t *testing.T) {
+	setValidGeminiAssistanceEnv(t)
+	t.Setenv("LLM_ASSISTANCE_PROVIDER", " gemini ")
+	t.Setenv("GEMINI_API_KEY", "  gemini-test-server-side-key  ")
+	t.Setenv("LLM_ASSISTANCE_MODEL", " gemini-runtime-model_1.2 ")
+
+	cfg := Load()
+	if cfg.LLMAssistanceProvider != "gemini" {
+		t.Fatalf("provider = %q", cfg.LLMAssistanceProvider)
+	}
+	if cfg.LLMAssistanceModel != "gemini-runtime-model_1.2" {
+		t.Fatalf("model = %q", cfg.LLMAssistanceModel)
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("valid Gemini assistance config rejected: %v", err)
+	}
+	credential, err := cfg.LLMAssistanceCredential()
+	if err != nil {
+		t.Fatalf("resolve Gemini credential: %v", err)
+	}
+	if strings.TrimSpace(credential) != "gemini-test-server-side-key" {
+		t.Fatal("unexpected resolved Gemini credential")
+	}
+}
+
 func TestLLMAssistanceConfigurationRejectsInvalidActivation(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -114,7 +154,7 @@ func TestLLMAssistanceConfigurationRejectsInvalidActivation(t *testing.T) {
 	}{
 		{name: "invalid timeout", key: "LLM_ASSISTANCE_TIMEOUT", value: "not-a-duration", want: "LLM_ASSISTANCE_TIMEOUT"},
 		{name: "too small timeout", key: "LLM_ASSISTANCE_TIMEOUT", value: "0s", want: "LLM_ASSISTANCE_TIMEOUT"},
-		{name: "unregistered provider", key: "LLM_ASSISTANCE_PROVIDER", value: "gemini", want: "LLM_ASSISTANCE_PROVIDER"},
+		{name: "unregistered provider", key: "LLM_ASSISTANCE_PROVIDER", value: "deepseek", want: "credential resolver"},
 		{name: "blank key", key: "OPENAI_API_KEY", value: "   ", want: "OPENAI_API_KEY"},
 		{name: "blank model", key: "LLM_ASSISTANCE_MODEL", value: "   ", want: "LLM_ASSISTANCE_MODEL"},
 		{name: "control character model", key: "LLM_ASSISTANCE_MODEL", value: "bad\nmodel", want: "LLM_ASSISTANCE_MODEL"},
@@ -133,7 +173,21 @@ func TestLLMAssistanceConfigurationRejectsInvalidActivation(t *testing.T) {
 	}
 }
 
-func TestLLMAssistanceConfigHasGenericModelButNoGenericCredentialOrEndpoint(t *testing.T) {
+func TestLLMAssistanceGeminiConfigurationRejectsMissingKeyAndUnsafeModel(t *testing.T) {
+	setValidGeminiAssistanceEnv(t)
+	t.Setenv("GEMINI_API_KEY", "   ")
+	if err := Load().Validate(); err == nil || !strings.Contains(err.Error(), "GEMINI_API_KEY") {
+		t.Fatalf("blank Gemini key must fail closed, got %v", err)
+	}
+
+	setValidGeminiAssistanceEnv(t)
+	t.Setenv("LLM_ASSISTANCE_MODEL", "gemini/unsafe-model")
+	if err := Load().Validate(); err == nil || !strings.Contains(err.Error(), "LLM provider configuration") {
+		t.Fatalf("unsafe Gemini model path must fail provider construction, got %v", err)
+	}
+}
+
+func TestLLMAssistanceConfigHasProviderSpecificKeysButNoGenericCredentialOrEndpoint(t *testing.T) {
 	typeInfo := reflect.TypeOf(Config{})
 	for _, forbidden := range []string{
 		"LLMAPIKey",
@@ -144,15 +198,17 @@ func TestLLMAssistanceConfigHasGenericModelButNoGenericCredentialOrEndpoint(t *t
 		"OpenAIBaseURL",
 		"OpenAIEndpoint",
 		"OpenAIModel",
+		"GeminiBaseURL",
+		"GeminiEndpoint",
+		"GeminiModel",
 	} {
 		if _, ok := typeInfo.FieldByName(forbidden); ok {
 			t.Fatalf("config must not expose deprecated/generic unsafe field %s", forbidden)
 		}
 	}
-	if _, ok := typeInfo.FieldByName("OpenAIAPIKey"); !ok {
-		t.Fatal("OpenAI provider must retain its provider-specific server-side API key field")
-	}
-	if _, ok := typeInfo.FieldByName("LLMAssistanceModel"); !ok {
-		t.Fatal("config must expose generic LLM model selection")
+	for _, required := range []string{"OpenAIAPIKey", "GeminiAPIKey", "LLMAssistanceModel"} {
+		if _, ok := typeInfo.FieldByName(required); !ok {
+			t.Fatalf("config must expose %s", required)
+		}
 	}
 }
