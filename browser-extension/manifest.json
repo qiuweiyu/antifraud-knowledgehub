@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "AntiFraud-KnowledgeHub Risk Check",
+  "version": "0.1.0",
+  "minimum_chrome_version": "102",
+  "description": "Check explicitly selected text with a local AntiFraud-KnowledgeHub instance.",
+  "permissions": [
+    "contextMenus",
+    "storage"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1:8080/*"
+  ],
+  "background": {
+    "service_worker": "service-worker.mjs",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "AntiFraud-KnowledgeHub",
+    "default_popup": "popup.html"
+  }
+}
