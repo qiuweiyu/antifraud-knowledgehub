@@ -13,6 +13,9 @@ import (
 
 func TestReviewRouteRemainsUnregisteredWhenControlledConfigEnabled(t *testing.T) {
 	db := newSubmissionTransportTestDB(t)
+	if err := db.AutoMigrate(&database.RuleSubmissionReviewEvent{}); err != nil {
+		t.Fatal(err)
+	}
 	cfg := config.Config{
 		CORSAllowOrigins:               []string{"*"},
 		AppPort:                        "8080",
