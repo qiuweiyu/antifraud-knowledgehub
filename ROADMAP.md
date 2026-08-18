@@ -80,11 +80,12 @@ Delivered foundation:
 - [x] Provider-specific DeepSeek credential handling
 - [x] Zero-real-provider-call fake-HTTP coverage for DeepSeek
 - [x] Shared provider conformance tests across OpenAI / Gemini / DeepSeek
+- [x] Explicit opt-in assisted-analysis HTTP transport design
 
 Current multi-provider work:
 
-- [ ] Explicit opt-in assisted-analysis HTTP transport with independent authorization/rate/cost controls
-- [ ] Frontend provider/model selection only after the transport is frozen
+- [ ] Implement assisted-analysis HTTP transport with independent authorization/rate/cost controls
+- [ ] Frontend provider/model selection only after the transport implementation is green
 
 The LLM remains supplemental. It must not replace rule evidence, risk scoring, human review or official-channel verification.
 
