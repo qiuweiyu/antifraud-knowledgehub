@@ -103,11 +103,10 @@ func TestDefaultRegistryContainsConfiguredProviders(t *testing.T) {
 	if err != nil {
 		t.Fatalf("default registry: %v", err)
 	}
-	if !registry.Has(ProviderOpenAI) {
-		t.Fatal("default registry must contain OpenAI")
-	}
-	if !registry.Has(ProviderGemini) {
-		t.Fatal("default registry must contain Gemini")
+	for _, name := range []string{ProviderOpenAI, ProviderGemini, ProviderDeepSeek} {
+		if !registry.Has(name) {
+			t.Fatalf("default registry must contain %s", name)
+		}
 	}
 
 	openAIProviderValue, err := registry.Create(ProviderOpenAI, ProviderConfig{
@@ -138,5 +137,20 @@ func TestDefaultRegistryContainsConfiguredProviders(t *testing.T) {
 	}
 	if gemini.model != "gemini-configurable-test" {
 		t.Fatalf("Gemini provider model = %q", gemini.model)
+	}
+
+	deepSeekProviderValue, err := registry.Create(ProviderDeepSeek, ProviderConfig{
+		Model:  "deepseek-configurable-test",
+		APIKey: "deepseek-test-secret",
+	})
+	if err != nil {
+		t.Fatalf("create configured DeepSeek provider: %v", err)
+	}
+	deepSeek, ok := deepSeekProviderValue.(*deepSeekProvider)
+	if !ok {
+		t.Fatalf("unexpected DeepSeek provider type %T", deepSeekProviderValue)
+	}
+	if deepSeek.model != "deepseek-configurable-test" {
+		t.Fatalf("DeepSeek provider model = %q", deepSeek.model)
 	}
 }
