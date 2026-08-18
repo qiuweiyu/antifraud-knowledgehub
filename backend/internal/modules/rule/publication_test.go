@@ -11,9 +11,10 @@ import (
 
 func TestPublishApprovedSubmissionCopiesStoredSnapshotAndCreatesAudit(t *testing.T) {
 	for _, enabled := range []bool{true, false} {
-		t.Run(map[bool]string{true: "enabled", false: "disabled"}[enabled], func(t *testing.T) {
+		name := map[bool]string{true: "enabled", false: "disabled"}[enabled]
+		t.Run(name, func(t *testing.T) {
 			db := publicationTestDB(t)
-			draft := reviewDraft("publish_snapshot_" + map[bool]string{true: "enabled", false: "disabled"}[enabled])
+			draft := reviewDraft("publish_snapshot_" + name)
 			draft.Name = "  stored name  "
 			draft.Description = "Synthetic publication description"
 			draft.Pattern = "  synthetic publication signal  "
@@ -72,17 +73,25 @@ func TestManualRiskRuleCreationKeepsPublicationProvenanceNull(t *testing.T) {
 }
 
 func TestPublicationRejectsInvalidCommandAndUnpublishableSourcesWithoutWrites(t *testing.T) {
-	t.Run("invalid actor commands", func(t *testing.T) {
-		for _, actor := range []string{"   ", strings.Repeat("界", 41)} {
+	invalidActors := []struct {
+		name  string
+		code  string
+		actor string
+	}{
+		{name: "blank actor", code: "invalid_publisher_blank", actor: "   "},
+		{name: "oversized actor", code: "invalid_publisher_oversized", actor: strings.Repeat("界", 41)},
+	}
+	for _, tt := range invalidActors {
+		t.Run(tt.name, func(t *testing.T) {
 			db := publicationTestDB(t)
-			submission := createApprovedPublicationSubmission(t, db, reviewDraft("invalid_publisher_"+strings.TrimSpace(actor)))
-			if _, err := PublishApprovedSubmission(db, submission.ID, SubmissionPublicationCommand{ActorLabel: actor}); !errors.Is(err, ErrInvalidSubmissionPublication) {
+			submission := createApprovedPublicationSubmission(t, db, reviewDraft(tt.code))
+			if _, err := PublishApprovedSubmission(db, submission.ID, SubmissionPublicationCommand{ActorLabel: tt.actor}); !errors.Is(err, ErrInvalidSubmissionPublication) {
 				t.Fatalf("expected invalid publication command, got %v", err)
 			}
 			assertPublicationCounts(t, db, 0, 0)
 			assertSubmissionStatus(t, db, submission.ID, ApprovedSubmissionStatus)
-		}
-	})
+		})
+	}
 
 	t.Run("pending", func(t *testing.T) {
 		db := publicationTestDB(t)
