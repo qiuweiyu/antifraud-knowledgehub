@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -261,9 +262,5 @@ func TestSubmissionReviewHandlerMapsIntegrityFailureWithoutMutation(t *testing.T
 }
 
 func uintString(value uint) string {
-	return fmtUint(uint64(value))
-}
-
-func fmtUint(value uint64) string {
-	return strconv.FormatUint(value, 10)
+	return strconv.FormatUint(uint64(value), 10)
 }
