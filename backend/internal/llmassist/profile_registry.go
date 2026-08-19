@@ -8,12 +8,12 @@ import (
 )
 
 const (
-	maxAssistedProfiles             = 16
-	maxProfileIDBytes               = 64
-	maxProfileDisplayNameBytes      = 120
-	maxProviderDisplayNameBytes     = 80
-	maxModelDisplayNameBytes        = 160
-	maxProfileDisclosureBytes       = 512
+	maxAssistedProfiles         = 16
+	maxProfileIDBytes           = 64
+	maxProfileDisplayNameBytes  = 120
+	maxProviderDisplayNameBytes = 80
+	maxModelDisplayNameBytes    = 160
+	maxProfileDisclosureBytes   = 512
 )
 
 type ProfileAvailability string
@@ -36,8 +36,10 @@ type ProfilePublicMetadata struct {
 	Disclosure          string              `json:"disclosure"`
 }
 
-// ProfileDefinition is server-only construction input. APIKey is consumed only
-// while the provider is constructed and is never retained by ProfileRegistry.
+// ProfileDefinition is server-only construction input. APIKey is passed only
+// into provider construction; it is never copied into profile metadata or
+// exposed through Resolve/PublicProfiles. The constructed provider may
+// encapsulate its server-side credential inside Service for later execution.
 type ProfileDefinition struct {
 	ID                  string
 	DisplayName         string
@@ -53,7 +55,7 @@ type ProfileDefinition struct {
 
 // ResolvedProfile is a trusted-server runtime value. It contains the approved
 // provider/model routing decision and a bounded assistance service, but no
-// provider credential.
+// provider credential field.
 type ResolvedProfile struct {
 	ID       string
 	Provider string
