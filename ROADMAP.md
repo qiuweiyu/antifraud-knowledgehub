@@ -84,10 +84,10 @@ Delivered foundation:
 - [x] Explicit assisted-analysis HTTP transport with independent authorization and Redis rate/cost controls
 - [x] Deterministic-first assisted response with supplemental provider fallback and zero analysis-history persistence
 - [x] Safe frontend trust-boundary and server-owned Assisted AI Profile selection design
+- [x] Server-owned Assisted AI Profile Registry + bounded non-secret metadata
 
 Current multi-provider work:
 
-- [ ] Server-owned Assisted AI Profile Registry + bounded non-secret metadata
 - [ ] Authenticated browser bridge design and implementation before any public SPA cost-bearing LLM call
 - [ ] Vue explicit assisted-analysis opt-in with third-party transfer disclosure
 - [ ] Optional Vue profile selector only for server-approved `profile_id` values after the authenticated bridge is green
