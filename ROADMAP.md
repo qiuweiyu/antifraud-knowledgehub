@@ -88,11 +88,11 @@ Delivered foundation:
 - [x] Authenticated browser bridge design: controlled access grant -> opaque HttpOnly Redis session, exact-Origin/CSRF, per-principal/global cost boundary
 - [x] Authenticated browser session foundation: digest-only access-grant registry, principal-generation revocation, Redis opaque session, exact-Origin/CSRF and trusted-peer-aware exchange limiting
 - [x] Authenticated browser assisted-analysis bridge: session-protected profile metadata, principal/global cost admission, server-owned profile resolution and deterministic-first execution
+- [x] Vue explicit assisted-analysis opt-in with transient access grant/CSRF state and adjacent third-party transfer disclosure
 
 Current multi-provider work:
 
-- [ ] Vue explicit assisted-analysis opt-in with third-party transfer disclosure
-- [ ] Optional Vue profile selector only for server-approved `profile_id` values after the authenticated bridge is green
+- [ ] Optional Vue profile selector only for server-approved `profile_id` values when more than one approved profile is intentionally enabled
 
 The public SPA must never embed the controlled assisted-analysis Bearer token or provider API keys. CORS is not an authentication boundary, and clients must not gain arbitrary provider/model/base-URL routing control. The first browser bridge is controlled beta access, not anonymous public cost-bearing LLM access.
 
@@ -116,7 +116,7 @@ Future browser work, if product need justifies it:
 
 - [ ] Packaging/store-distribution design
 - [ ] Cross-browser support
-- [ ] Explicit opt-in LLM-assisted browser flow only after the server-side authenticated assisted-analysis bridge exists
+- [ ] Explicit opt-in LLM-assisted browser extension flow only if separately designed after the web bridge remains green
 
 ## Long-term Vision
 
