@@ -9,8 +9,14 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func registerConfiguredBrowserSessionRoutes(v1 *gin.RouterGroup, cfg config.BrowserSessionConfig, production bool, store *database.Store) {
-	if v1 == nil || store == nil {
+func registerConfiguredBrowserSessionRoutes(v1 *gin.RouterGroup, cfg config.BrowserSessionConfig, production bool, store *database.Store) *browserauth.SessionHTTPHandler {
+	handler := buildConfiguredBrowserSessionHandler(cfg, production, store)
+	handler.Register(v1)
+	return handler
+}
+
+func buildConfiguredBrowserSessionHandler(cfg config.BrowserSessionConfig, production bool, store *database.Store) *browserauth.SessionHTTPHandler {
+	if store == nil {
 		panic("browser session runtime dependencies are required")
 	}
 	origin, err := browserauth.ValidateCanonicalOrigin(cfg.Origin, production)
@@ -33,7 +39,7 @@ func registerConfiguredBrowserSessionRoutes(v1 *gin.RouterGroup, cfg config.Brow
 	if err := browserauth.ValidateExchangeRateConfig(rateConfig); err != nil {
 		panic(fmt.Sprintf("validated browser exchange rate configuration became invalid: %v", err))
 	}
-	handler := &browserauth.SessionHTTPHandler{
+	return &browserauth.SessionHTTPHandler{
 		Registry: registry,
 		Sessions: browserauth.SessionStore{Client: store.Redis},
 		Limiter:  browserauth.RedisExchangeRateLimiter{Client: store.Redis},
@@ -44,5 +50,4 @@ func registerConfiguredBrowserSessionRoutes(v1 *gin.RouterGroup, cfg config.Brow
 			ExchangeRate:   rateConfig,
 		},
 	}
-	handler.Register(v1)
 }
