@@ -106,7 +106,7 @@
         </template>
       </template>
 
-      <template v-else-if="bridgeAvailable !== false">
+      <template v-else>
         <p>AI 辅助功能采用受控测试访问。Access Grant 只用于本次解锁请求，不会保存到浏览器存储。</p>
         <div class="unlock-row">
           <el-input
