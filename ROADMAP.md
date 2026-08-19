@@ -86,10 +86,10 @@ Delivered foundation:
 - [x] Safe frontend trust-boundary and server-owned Assisted AI Profile selection design
 - [x] Server-owned Assisted AI Profile Registry + bounded non-secret metadata
 - [x] Authenticated browser bridge design: controlled access grant -> opaque HttpOnly Redis session, exact-Origin/CSRF, per-principal/global cost boundary
+- [x] Authenticated browser session foundation: digest-only access-grant registry, principal-generation revocation, Redis opaque session, exact-Origin/CSRF and trusted-peer-aware exchange limiting
 
 Current multi-provider work:
 
-- [ ] Authenticated browser bridge session foundation (`AI-BROWSER-I1A`)
 - [ ] Authenticated browser assisted-analysis endpoint + profile metadata (`AI-BROWSER-I1B`)
 - [ ] Vue explicit assisted-analysis opt-in with third-party transfer disclosure
 - [ ] Optional Vue profile selector only for server-approved `profile_id` values after the authenticated bridge is green
