@@ -33,6 +33,9 @@ func main() {
 	if err := browserSessionCfg.Validate(cfg.IsProduction()); err != nil {
 		log.Fatalf("browser session configuration invalid: %v", err)
 	}
+	if err := browserSessionCfg.ValidateAssistedAnalysisPrerequisites(cfg); err != nil {
+		log.Fatalf("browser assisted-analysis configuration invalid: %v", err)
+	}
 	logger, _ := zap.NewProduction()
 	if !cfg.IsProduction() {
 		logger, _ = zap.NewDevelopment()
@@ -76,7 +79,10 @@ func newRouterWithBrowserSession(cfg config.Config, browserSessionCfg config.Bro
 	analysis.Register(v1, store.DB)
 
 	if browserSessionCfg.Enabled {
-		registerConfiguredBrowserSessionRoutes(v1, browserSessionCfg, cfg.IsProduction(), store)
+		sessionHandler := registerConfiguredBrowserSessionRoutes(v1, browserSessionCfg, cfg.IsProduction(), store)
+		if browserSessionCfg.AnalysisEnabled {
+			registerConfiguredBrowserAssistedAnalysisRoutes(v1, cfg, browserSessionCfg, store, sessionHandler)
+		}
 	}
 
 	if cfg.LLMAssistedAnalysisHTTPEnabled {
