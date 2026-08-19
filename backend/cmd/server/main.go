@@ -29,6 +29,10 @@ func main() {
 	if err := cfg.Validate(); err != nil {
 		log.Fatalf("configuration invalid: %v", err)
 	}
+	browserSessionCfg := config.LoadBrowserSessionConfig()
+	if err := browserSessionCfg.Validate(cfg.IsProduction()); err != nil {
+		log.Fatalf("browser session configuration invalid: %v", err)
+	}
 	logger, _ := zap.NewProduction()
 	if !cfg.IsProduction() {
 		logger, _ = zap.NewDevelopment()
@@ -46,7 +50,7 @@ func main() {
 		return
 	}
 
-	router := newRouter(cfg, logger, store)
+	router := newRouterWithBrowserSession(cfg, browserSessionCfg, logger, store)
 	addr := fmt.Sprintf(":%d", cfg.PortInt())
 	logger.Info("server listening", zap.String("addr", addr))
 	if err := router.Run(addr); err != nil && err != http.ErrServerClosed {
@@ -55,6 +59,10 @@ func main() {
 }
 
 func newRouter(cfg config.Config, logger *zap.Logger, store *database.Store) *gin.Engine {
+	return newRouterWithBrowserSession(cfg, config.BrowserSessionConfig{}, logger, store)
+}
+
+func newRouterWithBrowserSession(cfg config.Config, browserSessionCfg config.BrowserSessionConfig, logger *zap.Logger, store *database.Store) *gin.Engine {
 	if cfg.IsProduction() {
 		gin.SetMode(gin.ReleaseMode)
 	}
@@ -66,6 +74,10 @@ func newRouter(cfg config.Config, logger *zap.Logger, store *database.Store) *gi
 	rule.Register(v1, store.DB)
 	caseitem.Register(v1, store.DB)
 	analysis.Register(v1, store.DB)
+
+	if browserSessionCfg.Enabled {
+		registerConfiguredBrowserSessionRoutes(v1, browserSessionCfg, cfg.IsProduction(), store)
+	}
 
 	if cfg.LLMAssistedAnalysisHTTPEnabled {
 		registerConfiguredLLMAssistedAnalysisRoute(v1, cfg, store)
