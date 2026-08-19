@@ -52,6 +52,41 @@ export interface AnalysisResult {
   recommendations: string[]
 }
 
+export interface BrowserSession {
+  principal_id: string
+  display_label?: string
+  expires_at: string
+  csrf_token: string
+}
+
+export type AssistedProfileAvailability = 'available' | 'unavailable' | 'disabled'
+
+export interface AssistedProfileMetadata {
+  id: string
+  display_name: string
+  provider_display_name: string
+  model_display_name: string
+  availability: AssistedProfileAvailability
+  disclosure: string
+}
+
+export interface LLMAssistance {
+  summary: string
+  observations: string[] | null
+  limitations: string[] | null
+}
+
+export interface BrowserAssistedLLMResult {
+  status: 'available' | 'unavailable'
+  assistance: LLMAssistance
+  profile: AssistedProfileMetadata
+}
+
+export interface BrowserAssistedAnalysisResult {
+  rule_result: AnalysisResult
+  llm_assistance: BrowserAssistedLLMResult
+}
+
 export interface CategoryDistribution {
   category_code: string
   category_name: string
