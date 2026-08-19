@@ -16,16 +16,18 @@ import (
 const browserAssistedRateBackendTimeout = 500 * time.Millisecond
 
 const browserAssistedRateScript = `
-local principal = redis.call("INCR", KEYS[1])
+local principal = tonumber(redis.call("GET", KEYS[1]) or "0")
+local global = tonumber(redis.call("GET", KEYS[2]) or "0")
+if principal >= tonumber(ARGV[1]) or global >= tonumber(ARGV[2]) then
+  return 0
+end
+principal = redis.call("INCR", KEYS[1])
 if principal == 1 then
   redis.call("PEXPIRE", KEYS[1], ARGV[3])
 end
-local global = redis.call("INCR", KEYS[2])
+global = redis.call("INCR", KEYS[2])
 if global == 1 then
   redis.call("PEXPIRE", KEYS[2], ARGV[3])
-end
-if principal > tonumber(ARGV[1]) or global > tonumber(ARGV[2]) then
-  return 0
 end
 return 1
 `
