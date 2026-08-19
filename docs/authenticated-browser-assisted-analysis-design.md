@@ -53,10 +53,11 @@ Each configured grant maps to exactly one server-owned principal:
 
 ```text
 BrowserAccessGrantRecord {
-  principal_id       stable opaque server-owned identifier
-  display_label      optional non-authoritative label
-  grant_digest       SHA-256 digest of a high-entropy bearer grant
-  enabled            boolean
+  principal_id          stable opaque server-owned identifier
+  principal_generation positive bounded revocation generation
+  display_label         optional non-authoritative label
+  grant_digest          SHA-256 digest of a high-entropy bearer grant
+  enabled               boolean
 }
 ```
 
@@ -66,6 +67,7 @@ Required invariants:
 - the server stores/configures only the digest needed for verification, not the raw grant;
 - a raw grant contains at least 256 bits of cryptographic randomness before encoding;
 - principal IDs are bounded, normalized and safe to log as identifiers;
+- principal generation is a positive bounded server-owned value and is never supplied by the browser;
 - duplicate principal IDs or duplicate grant digests fail startup;
 - disabled or malformed grant records fail closed;
 - configured grant count is bounded;
@@ -88,10 +90,9 @@ Conceptual server-side state:
 ```text
 BrowserSession {
   principal_id
+  principal_generation
   issued_at
   expires_at
-  csrf_digest
-  process_generation
 }
 ```
 
@@ -101,11 +102,15 @@ Frozen first-slice semantics:
 - no sliding expiration;
 - browser close may end the client cookie earlier;
 - logout deletes Redis session state and clears the cookie;
-- server process restart invalidates all previously issued browser sessions through an in-memory process generation value;
-- a removed/revoked access grant takes effect after the required configuration restart, which also invalidates prior sessions;
+- every session validation re-resolves the current server-owned principal and requires the stored `principal_generation` to match;
+- removing/disabling a principal or incrementing its generation invalidates its previously issued sessions after the updated server configuration is deployed;
+- a process restart with unchanged principal configuration does **not** invalidate otherwise-valid sessions;
+- sessions are not bound to one process instance and may be validated by another instance that shares Redis and the same principal registry;
 - session IDs are never returned in JSON and never logged;
 - Redis unavailable/error/timeout during session validation fails closed;
 - no database-backed session table is introduced.
+
+This avoids process-local session affinity while retaining explicit operator revocation. Multi-instance deployments MUST roll the same principal configuration/generation across instances before claiming revocation is complete.
 
 Production cookie contract:
 
@@ -146,7 +151,13 @@ Cross-site cookie deployments are out of scope for the first slice and require a
 
 Cookie authentication introduces CSRF risk even with `SameSite=Strict`, so state-changing bridge endpoints also require a per-session CSRF token.
 
-On successful session exchange the server returns a random CSRF token in the JSON response. Only its digest is stored in Redis.
+The CSRF token is deterministically derived from the high-entropy raw session token using a domain-separated one-way SHA-256 construction, for example conceptually:
+
+```text
+csrf_token = base64url(SHA-256("afkh-browser-csrf-v1\x00" || raw_session_token))
+```
+
+The raw session token remains HttpOnly and is never returned to JavaScript. The derived CSRF token does not permit recovery of the 256-bit session token and does not authenticate a request without the session cookie.
 
 The browser keeps the CSRF token in application memory and sends it as:
 
@@ -154,12 +165,13 @@ The browser keeps the CSRF token in application memory and sends it as:
 X-AFKH-CSRF: <token>
 ```
 
-A session-status endpoint may return the current CSRF token for an already valid same-origin session so a page reload can restore in-memory state. Cross-origin callers cannot read that response under the browser same-origin policy, and exact Origin checks still apply to state-changing requests.
+A session-status endpoint may recompute and return the CSRF token for an already valid session so a page reload can restore in-memory state. Cross-origin callers cannot read that response under the browser same-origin policy, and exact Origin checks still apply to state-changing requests.
 
 Requirements:
 
-- CSRF token has at least 256 bits of entropy;
-- compare by fixed-length digest;
+- CSRF derivation is domain-separated from Redis/session-key hashing;
+- the derived token has a fixed 256-bit digest before encoding;
+- comparison is constant-time over fixed-length decoded bytes;
 - CSRF failure returns before analysis DB work or provider invocation;
 - CSRF token is never logged or persisted by the frontend;
 - provider/API credentials are never used as CSRF material.
@@ -187,11 +199,13 @@ Contract:
 5. strict single-field JSON decode;
 6. pre-auth Redis abuse limiter by coarse network source plus global limit;
 7. grant digest verification against the server registry;
-8. mint session + CSRF values with cryptographic randomness;
+8. mint a session value with cryptographic randomness and derive its CSRF token;
 9. persist bounded session state in Redis with absolute TTL;
 10. set HttpOnly session cookie;
-11. return only non-secret session metadata plus CSRF token;
+11. return only non-secret session metadata plus the derived CSRF token;
 12. `Cache-Control: no-store`.
+
+The coarse network source MUST come from the direct peer address by default. Forwarded client-IP headers may be trusted only behind an explicitly configured trusted-proxy boundary; an arbitrary `X-Forwarded-For` value from an untrusted peer MUST NOT bypass the exchange limiter.
 
 Authentication failure MUST use a generic response and MUST NOT reveal whether a principal exists, a grant is disabled, or a digest was close to matching.
 
@@ -201,7 +215,7 @@ Authentication failure MUST use a generic response and MUST NOT reveal whether a
 GET /api/v1/browser/session
 ```
 
-Requires a valid session cookie. Returns only bounded non-secret session metadata and a CSRF token for the current valid session. It MUST NOT return the raw session ID, access grant or any provider credential.
+Requires a valid session cookie. Returns only bounded non-secret session metadata and the recomputed CSRF token for the current valid session. It MUST NOT return the raw session ID, access grant or any provider credential.
 
 ### 7.3 Logout
 
@@ -264,7 +278,7 @@ Frozen execution order:
 
 1. bridge feature enabled check;
 2. exact Origin check;
-3. session cookie validation in Redis;
+3. session cookie validation in Redis, including current principal/generation validation;
 4. CSRF validation;
 5. per-principal + global cost/rate admission in Redis;
 6. exact content type and bounded strict request decode;
@@ -325,7 +339,7 @@ The browser UI must show the selected profile's third-party-transfer disclosure 
 
 The browser must be able to distinguish at least:
 
-- unauthenticated/expired session;
+- unauthenticated/expired/revoked session;
 - CSRF or Origin rejection;
 - session/cost-control Redis unavailable;
 - rate/cost admission denied;
@@ -338,7 +352,7 @@ Security-sensitive errors remain generic and secret-safe.
 
 Recommended transport classes:
 
-- `401` invalid/expired browser session;
+- `401` invalid/expired/revoked browser session;
 - `403` Origin/CSRF authorization failure;
 - `400` bounded request/profile validation failure;
 - `429` rate/cost denial;
@@ -353,12 +367,16 @@ Implementation CI MUST perform zero real OpenAI, Gemini or DeepSeek calls and re
 Required proof includes:
 
 - malformed/disabled grant registry fails closed;
+- duplicate principal/digest and invalid principal generation fail closed;
 - grant comparison does not expose raw secret material;
 - invalid grant cannot mint a session;
 - exact Origin enforcement;
+- untrusted forwarded-IP headers cannot bypass pre-auth rate limits;
 - production cookie flags;
-- session token and CSRF randomness through injectable test seams without weakening production entropy;
-- session expiry/logout/restart-generation invalidation;
+- session-token randomness through an injectable test seam without weakening production entropy;
+- CSRF derivation is stable, session-bound and non-reversible by construction;
+- session expiry/logout/principal-generation revocation;
+- sessions are not process-instance-affine when instances share Redis and principal configuration;
 - Redis failure fails closed;
 - CSRF failure causes zero analysis DB work and zero provider calls;
 - unauthenticated request causes zero analysis DB work and zero provider calls;
@@ -379,13 +397,12 @@ All provider behavior tests use injected fake HTTP transport.
 
 Scope:
 
-- bounded server-owned grant registry;
+- bounded server-owned grant registry with explicit principal generation;
 - Redis-backed opaque session store;
-- cryptographic token generation;
+- cryptographic session-token generation and domain-separated CSRF derivation;
 - exact-Origin middleware;
-- CSRF contract;
 - session exchange/status/logout endpoints;
-- pre-auth exchange abuse limiter;
+- trusted-peer-aware pre-auth exchange abuse limiter;
 - default-off configuration;
 - no provider call and no Vue assisted UI.
 
@@ -451,6 +468,8 @@ STOP implementation and return to design review if a proposed change requires or
 - CORS as the primary authorization control;
 - wildcard/reflected Origin authorization;
 - cross-site session cookies in the first slice;
+- trust in arbitrary forwarded client-IP headers;
+- process-local session affinity as an authorization requirement;
 - client-supplied provider/model/base URL/endpoint/credential/options;
 - provider invocation before authorization, cost admission and deterministic analysis;
 - LLM output modifying risk score, risk level, matched rules, publication or rule state;
@@ -463,6 +482,8 @@ STOP implementation and return to design review if a proposed change requires or
 **PASS for AI-BROWSER-D1 design.**
 
 The selected first browser bridge is a controlled, same-origin, operator-provisioned access-grant flow that exchanges a high-entropy browser credential for a short-lived opaque HttpOnly Redis session with exact-Origin, CSRF and per-principal/global cost controls.
+
+Session revocation is principal-generation based rather than process-instance based, so the design does not require sticky sessions or invalidate valid sessions merely because a server process restarted.
 
 It does not create anonymous public LLM access and does not export any privileged server/provider credential to the SPA.
 
