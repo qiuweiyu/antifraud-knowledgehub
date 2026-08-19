@@ -44,7 +44,7 @@ jobs:
         run: go test ./...
       - name: Race
         working-directory: backend
-        run: go test -race -count=1 ./internal/database ./internal/modules/rule ./internal/middleware ./internal/llmassist ./cmd/server
+        run: go test -race -count=1 ./internal/database ./internal/modules/rule ./internal/middleware ./internal/browserauth ./internal/llmassist ./cmd/server
       - name: Vet
         working-directory: backend
         run: go vet ./...
