@@ -85,14 +85,16 @@ Delivered foundation:
 - [x] Deterministic-first assisted response with supplemental provider fallback and zero analysis-history persistence
 - [x] Safe frontend trust-boundary and server-owned Assisted AI Profile selection design
 - [x] Server-owned Assisted AI Profile Registry + bounded non-secret metadata
+- [x] Authenticated browser bridge design: controlled access grant -> opaque HttpOnly Redis session, exact-Origin/CSRF, per-principal/global cost boundary
 
 Current multi-provider work:
 
-- [ ] Authenticated browser bridge design and implementation before any public SPA cost-bearing LLM call
+- [ ] Authenticated browser bridge session foundation (`AI-BROWSER-I1A`)
+- [ ] Authenticated browser assisted-analysis endpoint + profile metadata (`AI-BROWSER-I1B`)
 - [ ] Vue explicit assisted-analysis opt-in with third-party transfer disclosure
 - [ ] Optional Vue profile selector only for server-approved `profile_id` values after the authenticated bridge is green
 
-The public SPA must never embed the controlled assisted-analysis Bearer token or provider API keys. CORS is not an authentication boundary, and clients must not gain arbitrary provider/model/base-URL routing control.
+The public SPA must never embed the controlled assisted-analysis Bearer token or provider API keys. CORS is not an authentication boundary, and clients must not gain arbitrary provider/model/base-URL routing control. The first browser bridge is controlled beta access, not anonymous public cost-bearing LLM access.
 
 The LLM remains supplemental. It must not replace rule evidence, risk scoring, human review or official-channel verification.
 
