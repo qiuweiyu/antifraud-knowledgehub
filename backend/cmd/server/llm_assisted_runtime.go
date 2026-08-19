@@ -11,27 +11,63 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func buildLLMAssistedAnalysisService(cfg config.Config) (analysis.AssistanceService, error) {
+const (
+	defaultLLMAssistedProfileID         = "default"
+	defaultLLMAssistedProfileDisclosure = "Submitted text is sent to the configured third-party AI provider for supplemental analysis."
+)
+
+func buildLLMAssistedProfileRegistry(cfg config.Config) (*llmassist.ProfileRegistry, error) {
 	credential, err := cfg.LLMAssistanceCredential()
 	if err != nil {
 		return nil, err
 	}
-	registry, err := llmassist.NewDefaultRegistry()
+	providerRegistry, err := llmassist.NewDefaultRegistry()
 	if err != nil {
 		return nil, fmt.Errorf("initialize LLM provider registry: %w", err)
 	}
-	provider, err := registry.Create(cfg.LLMAssistanceProvider, llmassist.ProviderConfig{
-		Model:  cfg.LLMAssistanceModel,
-		APIKey: credential,
+	profileRegistry, err := llmassist.NewProfileRegistry(providerRegistry, []llmassist.ProfileDefinition{
+		{
+			ID:                  defaultLLMAssistedProfileID,
+			DisplayName:         "Default AI Assistance",
+			Provider:            cfg.LLMAssistanceProvider,
+			ProviderDisplayName: llmProviderDisplayName(cfg.LLMAssistanceProvider),
+			Model:               cfg.LLMAssistanceModel,
+			ModelDisplayName:    cfg.LLMAssistanceModel,
+			APIKey:              credential,
+			Timeout:             cfg.LLMAssistanceTimeout,
+			Enabled:             true,
+			Disclosure:          defaultLLMAssistedProfileDisclosure,
+		},
 	})
 	if err != nil {
-		return nil, fmt.Errorf("construct configured LLM provider: %w", err)
+		return nil, fmt.Errorf("construct assisted AI profile registry: %w", err)
 	}
-	service, err := llmassist.NewService(provider, cfg.LLMAssistanceTimeout)
+	return profileRegistry, nil
+}
+
+func buildLLMAssistedAnalysisService(cfg config.Config) (analysis.AssistanceService, error) {
+	profileRegistry, err := buildLLMAssistedProfileRegistry(cfg)
 	if err != nil {
-		return nil, fmt.Errorf("construct LLM assistance service: %w", err)
+		return nil, err
 	}
-	return service, nil
+	profile, err := profileRegistry.Resolve(defaultLLMAssistedProfileID)
+	if err != nil {
+		return nil, fmt.Errorf("resolve default assisted AI profile: %w", err)
+	}
+	return profile.Service, nil
+}
+
+func llmProviderDisplayName(provider string) string {
+	switch provider {
+	case llmassist.ProviderOpenAI:
+		return "OpenAI"
+	case llmassist.ProviderGemini:
+		return "Google Gemini"
+	case llmassist.ProviderDeepSeek:
+		return "DeepSeek"
+	default:
+		return "Configured AI Provider"
+	}
 }
 
 func registerConfiguredLLMAssistedAnalysisRoute(v1 *gin.RouterGroup, cfg config.Config, store *database.Store) {
