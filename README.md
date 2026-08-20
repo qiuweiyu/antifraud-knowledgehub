@@ -8,9 +8,9 @@
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Status](https://img.shields.io/badge/status-early--stage-orange)](#)
 
-AntiFraud-KnowledgeHub 是一个面向中文互联网场景的反诈骗知识库与可解释风险识别平台。项目聚焦可运行、可审计的基础能力：结构化诈骗分类、规则引擎、匿名案例库、文本风险分析 API、Vue3 控制台、开发者 CLI，以及默认关闭、由独立凭证保护的规则提交→人工审核→发布工作流。
+AntiFraud-KnowledgeHub 是一个面向中文互联网场景的反诈骗知识库与可解释风险识别平台。项目聚焦可运行、可审计的基础能力：结构化诈骗分类、规则引擎、匿名案例库、文本风险分析 API、Vue3 控制台、开发者 CLI、默认关闭的受控规则提交→人工审核→发布工作流，以及同样默认关闭、保持规则引擎权威性的可选 AI 辅助分析。
 
-AntiFraud-KnowledgeHub is an anti-fraud knowledge base and explainable risk analysis platform designed for Chinese-speaking online scenarios. The project focuses on runnable and auditable foundations: structured scam categories, a rule engine, an anonymized case library, a text risk analysis API, a Vue3 dashboard, a developer CLI, and a default-off independently authorized rule submission -> human review -> publication workflow.
+AntiFraud-KnowledgeHub is an anti-fraud knowledge base and explainable risk analysis platform designed for Chinese-speaking online scenarios. The project focuses on runnable and auditable foundations: structured scam categories, a rule engine, an anonymized case library, a text risk analysis API, a Vue3 dashboard, a developer CLI, a default-off independently authorized rule submission -> human review -> publication workflow, and optional default-off AI-assisted analysis that keeps deterministic rule results authoritative.
 
 ## Why
 
@@ -29,8 +29,14 @@ Online fraud tactics evolve quickly, but many risk signals are still explainable
 - Rule draft validation before persistence.
 - Default-off controlled pending submission, human approve/reject review, publication audit and approved-only rule publication.
 - Replay-safe/idempotent workflow behavior with PostgreSQL-backed concurrency tests.
+- Optional multi-provider LLM assistance for OpenAI, Gemini and DeepSeek behind server-owned provider/model/credential configuration.
+- Explicit deterministic-first assisted-analysis transports with Redis abuse/cost controls, bounded input/output and no automatic provider retry.
+- Controlled browser assisted-analysis bridge using operator-provisioned access grants, opaque HttpOnly Redis sessions, exact-Origin/CSRF checks, per-principal/global cost admission and server-approved profiles.
+- Vue assisted-analysis UX that requires explicit opt-in and displays the server-provided third-party transfer disclosure next to the action; rule-engine results remain the primary result.
 
 The controlled rule workflow is a maintainer transport, not anonymous public write access. Submission, review and publication use independent credentials; review/publication actor labels are server-owned operational attribution rather than user identity or OAuth/RBAC.
+
+AI assistance is also controlled and optional. The deterministic risk engine remains the sole authority for risk score, risk level, matched rules, evidence and rule-derived recommendations. LLM output is supplemental only and must not be treated as a definitive fraud verdict, rule approval authority or substitute for independent official-channel verification.
 
 ## Quick Start
 
@@ -59,7 +65,7 @@ Frontend: http://localhost:5173
 
 API docs: http://localhost:8080/swagger/index.html
 
-The controlled rule mutation routes remain disabled unless their explicit feature flags and independent credentials are configured. See [Community Rule Workflow](docs/community-rule-workflow.md) and [API](docs/api.md) before enabling them.
+The controlled rule mutation routes and AI-assisted routes remain disabled unless their explicit feature flags, credentials and protection settings are configured. Normal `/analysis/text` and `/analysis/preview` stay deterministic-only even when an LLM provider is configured. See [Community Rule Workflow](docs/community-rule-workflow.md), [API](docs/api.md), [LLM Assisted Analysis Design](docs/llm-assisted-analysis-design.md) and [Authenticated Browser Assisted Analysis Design](docs/authenticated-browser-assisted-analysis-design.md) before enabling controlled transports.
 
 ## Local Development
 
@@ -115,7 +121,14 @@ flowchart LR
   API --> Workflow["Submission / Review / Publication"]
   Workflow --> DB
   Workflow --> Rules
+  Frontend --> BrowserBridge["Controlled Browser Session + Assisted API"]
+  BrowserBridge --> Engine
+  BrowserBridge --> Redis
+  Engine --> LLMAssist["Supplemental LLM Assistance"]
+  LLMAssist --> Provider["Server-selected OpenAI / Gemini / DeepSeek"]
 ```
+
+The LLM path is explicit and optional: deterministic analysis runs first, then exactly one server-approved assistance provider may be called. Provider failure does not replace or suppress the deterministic result.
 
 ## Data Model
 
@@ -127,7 +140,7 @@ flowchart LR
 - RuleSubmissionReviewEvent: terminal human-review audit event.
 - RuleSubmissionPublicationEvent: approved-source publication provenance linking the submission/review to the initially published rule identity.
 
-Publication/review events provide application audit provenance; the project does not claim a cryptographically immutable ledger.
+Publication/review events provide application audit provenance; the project does not claim a cryptographically immutable ledger. Assisted-analysis requests do not introduce an LLM prompt/response history model and the controlled assisted routes create no new `AnalysisRecord` rows.
 
 ## Roadmap
 
@@ -135,7 +148,9 @@ Current `main` contains the controlled community-rule workflow foundation: contr
 
 The broader **v0.2 Community Rules** roadmap is not fully complete. Rule versioning/history and a per-rule changelog remain future work, along with any future design for broader contributor identity/permissions or maintainer UI.
 
-Later roadmap areas include optional AI-assisted analysis, browser integration, richer examples/documentation and multi-language support. See [ROADMAP.md](ROADMAP.md) for the current breakdown.
+The **v0.4 AI-assisted Adapter core** is delivered: provider-neutral assistance, OpenAI/Gemini/DeepSeek adapters, deterministic authority/fallback semantics, controlled assisted HTTP transport, authenticated browser bridge and explicit Vue opt-in/disclosure. A multi-profile Vue selector remains only an optional future enhancement if a deployment intentionally enables more than one server-approved profile.
+
+Later roadmap areas include richer examples/documentation, browser-extension distribution/cross-browser work and multi-language support. See [ROADMAP.md](ROADMAP.md) for the current breakdown.
 
 ## Screenshots
 
@@ -151,6 +166,11 @@ Real screenshots captured from the runnable local MVP are available in
 - [API](docs/api.md)
 - [Data schema](docs/data-schema.md)
 - [Risk engine](docs/risk-engine.md)
+- [LLM assisted analysis design](docs/llm-assisted-analysis-design.md)
+- [Multi-provider LLM design](docs/multi-provider-llm-design.md)
+- [Assisted-analysis HTTP transport design](docs/assisted-analysis-http-transport-design.md)
+- [Assisted-analysis profile selection design](docs/assisted-analysis-profile-selection-design.md)
+- [Authenticated browser assisted-analysis design](docs/authenticated-browser-assisted-analysis-design.md)
 - [Rule contribution format](docs/rule-contribution-format.md)
 - [Community rule workflow](docs/community-rule-workflow.md)
 - [Rule submission review and audit design](docs/rule-submission-review-audit-design.md)

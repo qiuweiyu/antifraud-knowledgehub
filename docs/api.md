@@ -325,6 +325,122 @@ Calling `/analysis/assisted` is an explicit third-party data-transfer action. Th
 
 In contrast, `/analysis/text` and `/analysis/preview` do not invoke an LLM provider.
 
+## Controlled Browser Session
+
+The browser bridge is registered only when `BROWSER_ASSISTED_ENABLED=true` with a valid exact origin, digest-only access-grant registry and Redis backend. It is intended for controlled beta access, not anonymous public cost-bearing LLM use.
+
+### Exchange Browser Access Grant
+
+`POST /browser/session/exchange`
+
+Request:
+
+```json
+{
+  "access_grant": "<operator-provisioned raw grant>"
+}
+```
+
+The raw grant is high-entropy material provisioned outside the application. Server configuration stores only its SHA-256 digest. A successful exchange creates an opaque one-hour Redis session and sets an HttpOnly session cookie; the raw session token is never returned in JSON.
+
+Required protections include:
+
+- exact configured `Origin` validation before grant verification;
+- strict `application/json` body handling and a bounded request body;
+- trusted-peer-aware source extraction;
+- independent Redis source/global pre-auth rate admission;
+- generic authentication failure responses that do not reveal principal details;
+- `Cache-Control: no-store`.
+
+The response contains bounded principal/session metadata and a derived CSRF token for current in-memory browser use. The production cookie is `__Host-afkh_browser_session`, `Secure`, `HttpOnly`, `SameSite=Strict`, `Path=/`, with no `Domain` attribute.
+
+### Read Current Browser Session
+
+`GET /browser/session`
+
+Requires a valid browser session cookie. Validation re-resolves the configured principal and `principal_generation`, so disabling/removing the principal or incrementing generation revokes existing sessions.
+
+The response contains non-secret principal metadata, absolute expiry and a derived CSRF token. It never exposes the raw session token or Browser Access Grant.
+
+### Logout Browser Session
+
+`POST /browser/session/logout`
+
+Requires:
+
+- exact configured `Origin`;
+- valid current session cookie;
+- `X-AFKH-CSRF: <derived csrf token>`.
+
+Successful logout deletes the Redis session state and clears the cookie. Session/Redis validation fails closed.
+
+## Browser Assisted Profile Metadata
+
+`GET /browser/analysis/assisted/profiles`
+
+Registered only when both the browser session bridge and browser assisted-analysis capability are enabled. Requires a valid browser session.
+
+The response contains only bounded public profile metadata such as:
+
+```json
+{
+  "id": "default",
+  "display_name": "AI assisted analysis",
+  "provider_display_name": "OpenAI",
+  "model_display_name": "Server-approved model",
+  "availability": "available",
+  "disclosure": "Submitted text may be sent to the configured third-party AI provider."
+}
+```
+
+It never exposes provider API keys, internal endpoints/base URLs, authorization material, hidden prompts or privileged provider configuration.
+
+## Browser Assisted Analysis
+
+`POST /browser/analysis/assisted`
+
+This is the Vue-facing controlled assisted-analysis endpoint. It is registered only when:
+
+- `BROWSER_ASSISTED_ENABLED=true`;
+- `BROWSER_ASSISTED_ANALYSIS_ENABLED=true`;
+- `LLM_ASSISTANCE_ENABLED=true` with valid server-owned provider/profile configuration.
+
+Request:
+
+```json
+{
+  "text": "客服称账户异常，要求立即转账到所谓安全账户",
+  "profile_id": "default"
+}
+```
+
+The browser may send only `text` and a server-approved `profile_id`. It cannot choose provider, model, API key, base URL, endpoint, tools, retry policy, timeout or output budget.
+
+The enforced execution order is:
+
+1. exact configured Origin;
+2. Redis session validation including current principal/generation;
+3. `X-AFKH-CSRF` validation;
+4. atomic Redis per-principal/global cost admission;
+5. strict bounded JSON decode;
+6. server-owned profile resolution;
+7. strict enabled-rule database load;
+8. deterministic risk-engine analysis;
+9. exactly one selected server-owned assistance service call;
+10. deterministic result plus supplemental assistance response.
+
+Important negative-path properties:
+
+- unauthenticated, Origin-rejected or CSRF-rejected requests stop before analysis/provider work;
+- rate denial stops before provider work;
+- invalid body/profile and database rule-load failures produce zero provider calls;
+- Redis nil/error/timeout fails closed;
+- provider failure after deterministic success does not retry and returns HTTP `200` with the deterministic result unchanged and supplemental status `unavailable`;
+- the route creates no new `AnalysisRecord` and does not persist raw prompts/provider responses/hidden reasoning;
+- responses use `Cache-Control: no-store`.
+
+The Vue client additionally fails closed if its configured API base resolves cross-origin. Browser Access Grants are transient and are not stored in localStorage, sessionStorage or IndexedDB; the CSRF token is kept only in current in-memory UI state. Provider credentials and the maintainer `LLM_ASSISTED_ANALYSIS_TOKEN` must never be embedded in browser code.
+
 ## Analysis Stats
 
 `GET /analysis/stats`
