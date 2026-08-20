@@ -57,7 +57,7 @@ Partially delivered:
 
 ## v0.4 AI-assisted Adapter
 
-Delivered foundation:
+Core delivered on current `main`:
 
 - [x] Provider-neutral LLM `Provider` interface
 - [x] Provider-neutral assistance service
@@ -90,9 +90,11 @@ Delivered foundation:
 - [x] Authenticated browser assisted-analysis bridge: session-protected profile metadata, principal/global cost admission, server-owned profile resolution and deterministic-first execution
 - [x] Vue explicit assisted-analysis opt-in with transient access grant/CSRF state and adjacent third-party transfer disclosure
 
-Current multi-provider work:
+The v0.4 core does not require a multi-profile selector. Current single-profile deployments fail closed if multiple approved profiles unexpectedly become available.
 
-- [ ] Optional Vue profile selector only for server-approved `profile_id` values when more than one approved profile is intentionally enabled
+Optional future enhancement, only if product need justifies intentionally enabling multiple server-approved profiles:
+
+- [ ] Vue profile selector restricted to server-approved `profile_id` values
 
 The public SPA must never embed the controlled assisted-analysis Bearer token or provider API keys. CORS is not an authentication boundary, and clients must not gain arbitrary provider/model/base-URL routing control. The first browser bridge is controlled beta access, not anonymous public cost-bearing LLM access.
 
