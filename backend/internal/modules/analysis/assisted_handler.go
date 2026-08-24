@@ -127,6 +127,7 @@ func loadAssistedAnalysisRules(ctx context.Context, db *gorm.DB) ([]riskengine.R
 			Severity:       item.Severity,
 			Explanation:    item.Explanation,
 			Recommendation: item.Recommendation,
+			Version:        item.Version,
 		})
 	}
 	return rules, nil
