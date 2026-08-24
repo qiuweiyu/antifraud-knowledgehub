@@ -30,6 +30,7 @@ type SubmissionPublicationOutcome struct {
 	Submission  database.RuleSubmission
 	ReviewEvent database.RuleSubmissionReviewEvent
 	RiskRule    database.RiskRule
+	RuleVersion database.RiskRuleVersion
 	Event       database.RuleSubmissionPublicationEvent
 	Validation  ValidationResult
 	Replay      bool
@@ -107,6 +108,7 @@ func PublishApprovedSubmission(db *gorm.DB, submissionID uint, command Submissio
 		riskRule := draftRequestFromSubmission(submission).riskRule()
 		sourceSubmissionID := submission.ID
 		riskRule.SourceSubmissionID = &sourceSubmissionID
+		riskRule.Version = 1
 		targetCode = riskRule.Code
 		if err := tx.Create(&riskRule).Error; err != nil {
 			riskRuleInsertFailed = true
@@ -142,10 +144,23 @@ func PublishApprovedSubmission(db *gorm.DB, submissionID uint, command Submissio
 			return fmt.Errorf("append rule submission publication event: %w", err)
 		}
 
+		ruleVersion, err := database.BuildRiskRuleVersion(riskRule, 1, database.RiskRuleVersionSourceControlledPublication)
+		if err != nil {
+			return fmt.Errorf("build initial published rule version: %w", err)
+		}
+		ruleVersion.SourceSubmissionID = uintPointer(submission.ID)
+		ruleVersion.ReviewEventID = uintPointer(reviewEvent.ID)
+		ruleVersion.PublicationEventID = uintPointer(publicationEvent.ID)
+		ruleVersion.CreatedAt = publicationEvent.CreatedAt
+		if err := tx.Create(&ruleVersion).Error; err != nil {
+			return fmt.Errorf("append initial published rule version: %w", err)
+		}
+
 		outcome = SubmissionPublicationOutcome{
 			Submission:  submission,
 			ReviewEvent: reviewEvent,
 			RiskRule:    riskRule,
+			RuleVersion: ruleVersion,
 			Event:       publicationEvent,
 			Validation:  validation,
 			Replay:      false,
@@ -307,21 +322,37 @@ func resolveExistingSubmissionPublication(db *gorm.DB, submission database.RuleS
 		return SubmissionPublicationOutcome{}, fmt.Errorf("%w: submission %d was already published by a different trusted publisher", ErrSubmissionPublicationConflict, submission.ID)
 	}
 
-	var riskRule database.RiskRule
-	if err := db.First(&riskRule, event.RiskRuleID).Error; err != nil {
+	var ruleVersion database.RiskRuleVersion
+	if err := db.Where("publication_event_id = ?", event.ID).First(&ruleVersion).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return SubmissionPublicationOutcome{}, fmt.Errorf("%w: submission %d was already published but its current RiskRule is missing", ErrSubmissionPublicationConflict, submission.ID)
+			return SubmissionPublicationOutcome{}, fmt.Errorf("%w: publication event %d has no linked rule version", ErrSubmissionPublicationIntegrity, event.ID)
 		}
 		return SubmissionPublicationOutcome{}, err
 	}
-	if riskRule.SourceSubmissionID == nil || *riskRule.SourceSubmissionID != submission.ID {
-		return SubmissionPublicationOutcome{}, fmt.Errorf("%w: current RiskRule %d has inconsistent publication provenance", ErrSubmissionPublicationIntegrity, riskRule.ID)
+	if ruleVersion.SourceKind != database.RiskRuleVersionSourceControlledPublication ||
+		ruleVersion.SourceSubmissionID == nil || *ruleVersion.SourceSubmissionID != submission.ID ||
+		ruleVersion.ReviewEventID == nil || *ruleVersion.ReviewEventID != reviewEvent.ID ||
+		ruleVersion.PublicationEventID == nil || *ruleVersion.PublicationEventID != event.ID ||
+		ruleVersion.RiskRuleID != event.RiskRuleID || ruleVersion.Code != event.RiskRuleCode {
+		return SubmissionPublicationOutcome{}, fmt.Errorf("%w: publication event %d linked rule version provenance is inconsistent", ErrSubmissionPublicationIntegrity, event.ID)
+	}
+
+	expectedRule := draftRequestFromSubmission(submission).riskRule()
+	expectedRule.ID = event.RiskRuleID
+	expectedRule.Version = ruleVersion.Version
+	expectedDigest, err := database.RiskRuleSnapshotDigest(expectedRule)
+	if err != nil {
+		return SubmissionPublicationOutcome{}, fmt.Errorf("compute publication replay snapshot digest: %w", err)
+	}
+	if expectedDigest != ruleVersion.SnapshotDigest {
+		return SubmissionPublicationOutcome{}, fmt.Errorf("%w: publication event %d linked version does not match approved snapshot", ErrSubmissionPublicationIntegrity, event.ID)
 	}
 
 	return SubmissionPublicationOutcome{
 		Submission:  submission,
 		ReviewEvent: reviewEvent,
-		RiskRule:    riskRule,
+		RiskRule:    database.RiskRuleFromVersion(ruleVersion),
+		RuleVersion: ruleVersion,
 		Event:       event,
 		Replay:      true,
 	}, nil
@@ -368,4 +399,9 @@ func duplicateCodePublicationValidation() ValidationResult {
 		}},
 		Warnings: []ValidationError{},
 	}
+}
+
+func uintPointer(value uint) *uint {
+	copy := value
+	return &copy
 }
