@@ -23,6 +23,7 @@ type submissionPublicationResponse struct {
 	PublicationEventID uint      `json:"publication_event_id"`
 	RiskRuleID         uint      `json:"risk_rule_id"`
 	RiskRuleCode       string    `json:"risk_rule_code"`
+	RiskRuleVersion    uint      `json:"risk_rule_version"`
 	ActorKind          string    `json:"actor_kind"`
 	ActorLabel         string    `json:"actor_label"`
 	CreatedAt          time.Time `json:"created_at"`
@@ -74,6 +75,7 @@ func SubmissionPublicationHandler(db *gorm.DB, actorLabel string) gin.HandlerFun
 			PublicationEventID: outcome.Event.ID,
 			RiskRuleID:         outcome.Event.RiskRuleID,
 			RiskRuleCode:       outcome.Event.RiskRuleCode,
+			RiskRuleVersion:    outcome.RuleVersion.Version,
 			ActorKind:          outcome.Event.ActorKind,
 			ActorLabel:         outcome.Event.ActorLabel,
 			CreatedAt:          outcome.Event.CreatedAt,
