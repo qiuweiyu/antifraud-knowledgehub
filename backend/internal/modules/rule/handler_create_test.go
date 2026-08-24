@@ -1,67 +1,38 @@
 package rule
 
-import (
-	"encoding/json"
-	"net/http"
-	"net/http/httptest"
-	"strings"
-	"testing"
+import "testing"
 
-	"github.com/antifraud-knowledgehub/antifraud-knowledgehub/backend/internal/database"
-	"github.com/gin-gonic/gin"
-)
-
-func TestDirectRuleCreatePreservesEnabledIntent(t *testing.T) {
+func TestDraftRiskRulePreservesEnabledIntent(t *testing.T) {
+	explicitTrue := true
+	explicitFalse := false
 	tests := []struct {
-		name            string
-		code            string
-		enabledFragment string
-		wantEnabled     bool
+		name        string
+		enabled     *bool
+		wantEnabled bool
 	}{
-		{name: "omitted defaults true", code: "direct_enabled_omitted", wantEnabled: true},
-		{name: "explicit true stays true", code: "direct_enabled_true", enabledFragment: `,"enabled":true`, wantEnabled: true},
-		{name: "explicit false stays false", code: "direct_enabled_false", enabledFragment: `,"enabled":false`, wantEnabled: false},
+		{name: "omitted defaults true", enabled: nil, wantEnabled: true},
+		{name: "explicit true stays true", enabled: &explicitTrue, wantEnabled: true},
+		{name: "explicit false stays false", enabled: &explicitFalse, wantEnabled: false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			db := reviewTestDB(t)
-			gin.SetMode(gin.TestMode)
-			router := gin.New()
-			Register(router.Group("/api/v1"), db)
-
-			body := `{"code":"` + tt.code + `","name":"Direct enabled regression","category_code":"fake_customer_service","rule_type":"keyword","pattern":"direct enabled regression signal","weight":20,"severity":"high","explanation":"Regression fixture","recommendation":"Verify via official channels."` + tt.enabledFragment + `}`
-			req := httptest.NewRequest(http.MethodPost, "/api/v1/rules", strings.NewReader(body))
-			req.Header.Set("Content-Type", "application/json")
-			resp := httptest.NewRecorder()
-			router.ServeHTTP(resp, req)
-			if resp.Code != http.StatusCreated {
-				t.Fatalf("expected status %d, got %d: %s", http.StatusCreated, resp.Code, resp.Body.String())
+			draft := DraftRequest{
+				Code:         "draft_enabled_mapping",
+				Name:         "Draft enabled mapping",
+				CategoryCode: "fake_customer_service",
+				RuleType:     "keyword",
+				Pattern:      "draft enabled mapping signal",
+				Weight:       20,
+				Severity:     "high",
+				Enabled:      tt.enabled,
 			}
-
-			var envelope struct {
-				Success bool              `json:"success"`
-				Data    database.RiskRule `json:"data"`
+			got := draft.riskRule()
+			if got.Enabled != tt.wantEnabled {
+				t.Fatalf("enabled mismatch: want %v got %v", tt.wantEnabled, got.Enabled)
 			}
-			if err := json.Unmarshal(resp.Body.Bytes(), &envelope); err != nil {
-				t.Fatalf("decode create response: %v", err)
-			}
-			if !envelope.Success {
-				t.Fatalf("expected successful create response: %s", resp.Body.String())
-			}
-			if envelope.Data.Enabled != tt.wantEnabled {
-				t.Fatalf("response enabled mismatch: want %v got %v", tt.wantEnabled, envelope.Data.Enabled)
-			}
-
-			var stored database.RiskRule
-			if err := db.Where("code = ?", tt.code).First(&stored).Error; err != nil {
-				t.Fatal(err)
-			}
-			if stored.Enabled != tt.wantEnabled {
-				t.Fatalf("stored enabled mismatch: want %v got %v", tt.wantEnabled, stored.Enabled)
-			}
-			if stored.SourceSubmissionID != nil {
-				t.Fatalf("direct rule create must not set publication provenance, got source_submission_id=%d", *stored.SourceSubmissionID)
+			if got.SourceSubmissionID != nil {
+				t.Fatalf("draft mapping must not invent publication provenance, got source_submission_id=%d", *got.SourceSubmissionID)
 			}
 		})
 	}

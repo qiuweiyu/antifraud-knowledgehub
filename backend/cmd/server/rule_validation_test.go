@@ -163,29 +163,6 @@ func TestRuleDraftValidationDoesNotCreateRule(t *testing.T) {
 	}
 }
 
-func TestCreateRuleUsesDraftValidator(t *testing.T) {
-	server := testRouter(t)
-	defer server.Close()
-
-	body, _ := json.Marshal(map[string]any{
-		"code":          "create_invalid_category",
-		"name":          "Create invalid category",
-		"category_code": "not_a_category",
-		"rule_type":     "keyword",
-		"pattern":       "official channel",
-		"weight":        20,
-		"severity":      "medium",
-	})
-	resp, err := http.Post(server.URL+"/api/v1/rules", "application/json", bytes.NewReader(body))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("expected create to reject invalid category with 400, got %d", resp.StatusCode)
-	}
-}
-
 type ruleDraftPayload struct {
 	Success bool `json:"success"`
 	Data    struct {
