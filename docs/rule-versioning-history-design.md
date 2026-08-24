@@ -74,19 +74,21 @@ The implementation must follow these decisions.
 15. A revision proposal explicitly targets one `RiskRule.ID` and one `base_version`.
 16. Revision draft clients cannot choose a new Rule code; the server copies the target's current code into the stored submission snapshot.
 17. A no-op revision that produces the same canonical snapshot as its base is rejected.
-18. Revision approval revalidates the target and requires the recorded base version to still be current.
-19. Revision publication revalidates again and uses a conditional version compare-and-swap; stale approved revisions fail rather than overwriting a newer Rule.
-20. Two different revision submissions from the same base may exist and may even be independently approved, but at most one can publish that next version.
-21. Same-submission publication replay resolves the exact historical version established by that submission, even if newer Rule versions now exist.
-22. A different publisher actor retry remains a conflict under the existing publisher-attribution contract.
-23. `enabled` is ordinary versioned Rule content. Disabling or re-enabling through the controlled lifecycle creates a new version.
-24. No controlled hard-delete operation is introduced. Retirement in this slice means publishing a revision with `enabled=false`.
-25. Existing out-of-band/legacy hard deletion is not retroactively denied by a new foreign key from history to `RiskRule`; history must survive current-row deletion.
-26. Public history reads are allowed because they are side-effect free, but first-slice public history responses do not expose trusted actor labels, credentials, or internal review rationale.
-27. New deterministic matched-rule results include the exact positive Rule version used for the match.
-28. Existing `AnalysisRecord` rows are not rewritten to invent a Rule version they never stored.
-29. Legacy/backfill history explicitly distinguishes proven controlled-publication snapshots from `legacy_baseline` snapshots observed during migration.
-30. Database constraints, transactions, and conditional updates are correctness authorities. In-memory locks are not.
+18. Revision proposal/review/publication must verify that the current projection content still matches the stored history snapshot for `base_version`, not merely that the version number matches.
+19. Revision approval revalidates the target and requires the recorded base version to still be current.
+20. Revision publication revalidates again and uses a conditional version compare-and-swap; stale approved revisions fail rather than overwriting a newer Rule.
+21. Two different revision submissions from the same base may exist and may even be independently approved, but at most one can publish that next version.
+22. Same-submission publication replay resolves the exact historical version established by that submission, even if newer Rule versions now exist.
+23. Publication responses add the exact published Rule version so replay cannot be confused with the later current projection.
+24. A different publisher actor retry remains a conflict under the existing publisher-attribution contract.
+25. `enabled` is ordinary versioned Rule content. Disabling or re-enabling through the controlled lifecycle creates a new version.
+26. No controlled hard-delete operation is introduced. Retirement in this slice means publishing a revision with `enabled=false`.
+27. Existing out-of-band/legacy hard deletion is not retroactively denied by a new foreign key from history to `RiskRule`; history must survive current-row deletion.
+28. Public history reads are allowed because they are side-effect free, but first-slice public history responses do not expose trusted actor labels, credentials, or internal review rationale.
+29. New deterministic matched-rule results include the exact positive Rule version used for the match.
+30. Existing `AnalysisRecord` rows are not rewritten to invent a Rule version they never stored.
+31. Legacy/backfill history explicitly distinguishes proven controlled-publication snapshots from `legacy_baseline` snapshots observed during migration.
+32. Database constraints, transactions, conditional updates, and stored snapshot integrity are correctness authorities. In-memory locks are not.
 
 ## 4. Stable identity and code policy
 
@@ -245,6 +247,20 @@ It does not include database IDs, version number, source IDs, actor labels, or t
 Do not silently reuse the existing `afkh-rule-submission-draft:v1` domain string for a different persistence purpose.
 
 The content equality of a controlled version and its approved submission may be verified field-by-field and/or by computing the corresponding canonical snapshot under each domain.
+
+### 6.4 Current projection integrity
+
+For a current Rule with version `N`, the implementation must be able to load history row `(risk_rule_id, N)` and verify:
+
+```text
+snapshot_digest(current RiskRule content)
+==
+RiskRuleVersion(N).snapshot_digest
+```
+
+This check is mandatory in preparation and in every revision proposal/review/publication path before trusting `base_version`.
+
+A matching version number with mismatched content is an integrity failure, not permission to overwrite the current row and silently hide an out-of-band change.
 
 ## 7. Legacy migration/backfill: no fabricated history
 
@@ -463,6 +479,8 @@ publication metadata
 
 The server obtains the target ID from the path and copies the current target code into the persisted submission snapshot.
 
+Before creating/replaying a revision proposal, the service verifies that the current Rule projection matches the stored history snapshot for the requested `base_version`.
+
 This route creates only a pending non-executable proposal. It does not alter current Rule state.
 
 ## 11. Revision validation
@@ -476,16 +494,19 @@ Introduce contextual revision validation that shares common field/category/type/
 1. target Rule exists,
 2. `base_version > 0`,
 3. target current version equals `base_version`,
-4. stored submission code equals target current code,
-5. the proposed canonical snapshot differs from the current base snapshot,
-6. all ordinary Rule field validation passes,
-7. duplicate-code validation allows the target's own unchanged code but no different Rule with that code.
+4. history row `(target ID, base_version)` exists,
+5. target current canonical snapshot digest equals that history row's digest,
+6. stored submission code equals target current code,
+7. the proposed canonical snapshot differs from the trusted base history snapshot,
+8. all ordinary Rule field validation passes,
+9. duplicate-code validation allows the target's own unchanged code but no different Rule with that code.
 
 Expected stable validation/conflict concepts include:
 
 ```text
 rule_not_found
 stale_base_version
+rule_version_integrity_error
 code_immutable
 no_changes
 category_not_found
@@ -530,14 +551,16 @@ Inside the review transaction/revalidation path:
 - verify stored target/base shape,
 - load the current target Rule,
 - require current version equals stored `base_version`,
+- load the base `RiskRuleVersion`,
+- verify current projection digest equals the base version digest,
 - require code equality,
-- reject no-op snapshot,
+- reject no-op snapshot against the trusted base history snapshot,
 - run contextual revision validation,
 - preserve the existing terminal review state machine and review event/digest binding.
 
-A stale revision is not approved by silently rebasing it onto a newer Rule version.
+A stale or integrity-mismatched revision is not approved by silently rebasing it onto a newer/different Rule state.
 
-The maintainer must create/review a new revision submission against the new base.
+The maintainer must create/review a new revision submission against the new trusted base.
 
 ## 13. Publication behavior
 
@@ -575,9 +598,11 @@ load approved submission
 -> load/verify approved review + draft digest
 -> load current target RiskRule
 -> require target.version == submission.base_version
+-> load RiskRuleVersion(target.id, base_version)
+-> require snapshot_digest(current target) == base version snapshot_digest
 -> require target.code == submission.code
 -> contextual revision revalidation
--> reject no-op
+-> reject no-op against trusted base snapshot
 -> next_version = base_version + 1
 -> append RiskRuleVersion(next_version, approved snapshot, controlled provenance)
 -> conditional update current RiskRule WHERE id=? AND version=base_version
@@ -587,7 +612,7 @@ load approved submission
 -> commit
 ```
 
-The implementation may order the version/event inserts differently inside the transaction to obtain generated IDs, provided all three logical effects are atomic and rollback together.
+The implementation may order the version/event inserts differently inside the transaction to obtain generated IDs, provided all three logical effects are atomic and rollback together and the committed version row is linked to the committed publication event.
 
 Use explicit maps/column updates where needed so `enabled=false` is not lost to ORM zero-value behavior.
 
@@ -623,6 +648,8 @@ RowsAffected == 1
 ```
 
 If zero rows are updated, the publication is stale/conflicted and its transaction must not commit a version/event.
+
+The pre-update digest check protects against a same-version current projection that was altered out of band; version-number CAS alone is not sufficient for trustworthy history.
 
 ### 14.2 Unique history key
 
@@ -674,9 +701,27 @@ submission S3 -> v3
 retry publication of S2
 ```
 
-must resolve as replay of **v2**, not create v4, not fail merely because current is v3, and not return v3 as if it were S2's published snapshot.
+must resolve as replay of **v2**, not create v4, not fail merely because current is v3, and not represent v3 as if it were S2's published result.
 
 A retry by a different trusted publisher actor remains a conflict under the existing publication actor-label contract.
+
+### 15.1 Publication response compatibility
+
+The existing publication response already returns publication/rule IDs, code, actor attribution, timestamp, and replay status rather than a mutable full Rule object.
+
+Add one response field:
+
+```json
+{
+  "risk_rule_version": 2
+}
+```
+
+This field identifies the exact version established by the source publication event.
+
+For a historical replay after the Rule has advanced, `risk_rule_version` remains the original published version. The handler must not substitute the later current version.
+
+This is additive for existing create-publication clients; initial publications report version `1` after versioning is enabled.
 
 ## 16. Enable, disable, retirement, and deletion
 
@@ -823,7 +868,7 @@ Cannot:
 - choose trusted actor labels,
 - modify current Rule directly,
 - select a different Rule code for a revision,
-- force a stale base through publication.
+- force a stale or projection/history-mismatched base through publication.
 
 ### Reviewer
 
@@ -852,6 +897,10 @@ Existing stored submissions are treated as `kind=create` after migration.
 ### Existing current Rule readers
 
 The `version` field is additive.
+
+### Existing publication clients
+
+`risk_rule_version` is additive to the publication response. Version `1` represents a new Rule's first version after migration/versioning preparation.
 
 ### Existing analysis clients
 
@@ -882,8 +931,10 @@ Bounded scope:
 - snapshot digest,
 - idempotent `PrepareRiskRuleVersionHistory`,
 - exact controlled/legacy baseline backfill rules,
+- current projection/history digest consistency checks,
 - initial publication creates/links v1,
 - publication replay resolves exact version rather than assuming current projection,
+- publication response adds `risk_rule_version`,
 - deterministic matched-rule `rule_version`,
 - CLI implicit seed version 1,
 - focused SQLite + PostgreSQL upgrade/integrity tests.
@@ -899,6 +950,7 @@ Bounded scope:
 - pending request-digest unique index,
 - protected revision-submission route/service,
 - contextual revision validation,
+- current projection/base-history integrity verification,
 - review-time stale-base/no-op/code-immutability enforcement,
 - no executable Rule mutation yet.
 
@@ -953,13 +1005,15 @@ Implementation slices must preserve the repository's standard full CI plus focus
 - explicit `enabled=false` preserved,
 - event/version failure rolls back all effects,
 - same-submission concurrency converges,
-- same code across different creates still has one winner.
+- same code across different creates still has one winner,
+- publication response identifies the exact v1.
 
 ### Revision proposal/review
 
 - exact target/base/draft retry replays one pending submission,
 - same content on different target/base does not collide,
 - stale base rejected,
+- same-version projection/history mismatch rejected as integrity error,
 - code cannot be changed,
 - no-op rejected,
 - structural/category/regex validation preserved,
@@ -974,7 +1028,7 @@ Implementation slices must preserve the repository's standard full CI plus focus
 - revision event/version carries new source provenance,
 - two different revisions from same base -> exactly one winner,
 - loser has zero committed Rule/history/event change,
-- retry historical published revision after newer version -> exact historical replay,
+- retry historical published revision after newer version -> exact historical replay and exact historical `risk_rule_version`,
 - different publisher actor replay -> conflict,
 - disabled revision remains disabled,
 - failed validation/integrity/stale paths produce zero prohibited writes.
@@ -1018,6 +1072,7 @@ Stop implementation and return to design if any slice would require one of the f
 
 - reintroducing anonymous direct Rule mutation,
 - silently changing Rule code during a controlled revision,
+- trusting a `base_version` whose current projection does not match stored history,
 - rebasing an approved stale revision without new review,
 - rewriting historical review/publication events,
 - guessing historical Rule versions for existing AnalysisRecords,
