@@ -207,7 +207,8 @@ func TestSubmissionPublicationHandlerCreatesReplaysAndNeverRecreatesHardDeletedR
 	if !firstEnvelope.Success || firstEnvelope.Data.Replay || firstEnvelope.Data.SubmissionID != submission.ID ||
 		firstEnvelope.Data.Status != ApprovedSubmissionStatus || firstEnvelope.Data.ActorKind != ControlledPublisherActorKind ||
 		firstEnvelope.Data.ActorLabel != publicationHandlerActor || firstEnvelope.Data.PublicationEventID == 0 || firstEnvelope.Data.RiskRuleID == 0 ||
-		firstEnvelope.Data.RiskRuleCode != submission.Code || firstEnvelope.Data.ReviewEventID != reviewBefore.ID || firstEnvelope.Data.CreatedAt.IsZero() {
+		firstEnvelope.Data.RiskRuleCode != submission.Code || firstEnvelope.Data.RiskRuleVersion != 1 ||
+		firstEnvelope.Data.ReviewEventID != reviewBefore.ID || firstEnvelope.Data.CreatedAt.IsZero() {
 		t.Fatalf("unexpected first publication response: %+v", firstEnvelope)
 	}
 	if strings.Contains(first.Body.String(), draft.Pattern) || strings.Contains(first.Body.String(), draft.Explanation) ||
@@ -222,8 +223,8 @@ func TestSubmissionPublicationHandlerCreatesReplaysAndNeverRecreatesHardDeletedR
 	if err := db.First(&storedRule, firstEnvelope.Data.RiskRuleID).Error; err != nil {
 		t.Fatal(err)
 	}
-	if storedRule.Enabled || storedRule.SourceSubmissionID == nil || *storedRule.SourceSubmissionID != submission.ID {
-		t.Fatalf("published rule did not preserve approved disabled snapshot/provenance: %+v", storedRule)
+	if storedRule.Enabled || storedRule.Version != 1 || storedRule.SourceSubmissionID == nil || *storedRule.SourceSubmissionID != submission.ID {
+		t.Fatalf("published rule did not preserve approved disabled snapshot/version/provenance: %+v", storedRule)
 	}
 
 	replay := performPublicationHandlerRequest(db, uintString(submission.ID), "application/json", `{}`, publicationHandlerActor)
@@ -237,7 +238,8 @@ func TestSubmissionPublicationHandlerCreatesReplaysAndNeverRecreatesHardDeletedR
 	if err := json.Unmarshal(replay.Body.Bytes(), &replayEnvelope); err != nil {
 		t.Fatal(err)
 	}
-	if !replayEnvelope.Success || !replayEnvelope.Data.Replay || replayEnvelope.Data.PublicationEventID != firstEnvelope.Data.PublicationEventID || replayEnvelope.Data.RiskRuleID != firstEnvelope.Data.RiskRuleID {
+	if !replayEnvelope.Success || !replayEnvelope.Data.Replay || replayEnvelope.Data.PublicationEventID != firstEnvelope.Data.PublicationEventID ||
+		replayEnvelope.Data.RiskRuleID != firstEnvelope.Data.RiskRuleID || replayEnvelope.Data.RiskRuleVersion != firstEnvelope.Data.RiskRuleVersion {
 		t.Fatalf("unexpected exact replay response: %+v", replayEnvelope)
 	}
 	assertPublicationCounts(t, db, 1, 1)
@@ -252,10 +254,33 @@ func TestSubmissionPublicationHandlerCreatesReplaysAndNeverRecreatesHardDeletedR
 		t.Fatal(err)
 	}
 	afterDelete := performPublicationHandlerRequest(db, uintString(submission.ID), "application/json", `{}`, publicationHandlerActor)
-	if afterDelete.Code != http.StatusConflict || publicationErrorCode(t, afterDelete) != "submission_publication_conflict" {
-		t.Fatalf("retry after hard delete must conflict: %d %s", afterDelete.Code, afterDelete.Body.String())
+	if afterDelete.Code != http.StatusOK {
+		t.Fatalf("historical replay after hard delete must return 200, got %d: %s", afterDelete.Code, afterDelete.Body.String())
+	}
+	var afterDeleteEnvelope struct {
+		Success bool                          `json:"success"`
+		Data    submissionPublicationResponse `json:"data"`
+	}
+	if err := json.Unmarshal(afterDelete.Body.Bytes(), &afterDeleteEnvelope); err != nil {
+		t.Fatal(err)
+	}
+	if !afterDeleteEnvelope.Success || !afterDeleteEnvelope.Data.Replay ||
+		afterDeleteEnvelope.Data.PublicationEventID != firstEnvelope.Data.PublicationEventID ||
+		afterDeleteEnvelope.Data.RiskRuleID != firstEnvelope.Data.RiskRuleID ||
+		afterDeleteEnvelope.Data.RiskRuleCode != firstEnvelope.Data.RiskRuleCode ||
+		afterDeleteEnvelope.Data.RiskRuleVersion != firstEnvelope.Data.RiskRuleVersion {
+		t.Fatalf("historical replay after hard delete must resolve the immutable published version: %+v", afterDeleteEnvelope)
 	}
 	assertPublicationCounts(t, db, 0, 1)
+	var versionCount int64
+	if err := db.Model(&database.RiskRuleVersion{}).
+		Where("risk_rule_id = ? AND version = ?", firstEnvelope.Data.RiskRuleID, firstEnvelope.Data.RiskRuleVersion).
+		Count(&versionCount).Error; err != nil {
+		t.Fatal(err)
+	}
+	if versionCount != 1 {
+		t.Fatalf("historical replay must preserve exactly one immutable published version, got %d", versionCount)
+	}
 	assertSubmissionStatus(t, db, submission.ID, ApprovedSubmissionStatus)
 	assertPublicationReviewUnchanged(t, db, reviewBefore)
 }
