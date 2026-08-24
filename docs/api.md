@@ -13,20 +13,17 @@ Base path: `/api/v1`
 ## Categories
 
 - `GET /categories`
-- `POST /categories`
 - `GET /categories/{id}`
-- `PUT /categories/{id}`
-- `DELETE /categories/{id}`
+
+Persisted category content is read-only through the default public API. There is no anonymous HTTP endpoint for creating, updating, or deleting categories. Maintainer changes may be made through reviewed repository seed-data changes or a future separately designed and authorized mutation capability.
 
 ## Rules
 
 - `GET /rules?q=&category_code=&severity=`
 - `POST /rules/validate`
-- `POST /rules`
 - `GET /rules/{id}`
-- `PUT /rules/{id}`
-- `PATCH /rules/{id}/toggle`
-- `DELETE /rules/{id}`
+
+Persisted `RiskRule` content is read-only through the default public API. Direct anonymous create/update/toggle/delete routes are intentionally not registered. The current HTTP mutation path for rules is the independently authorized, default-off Rule Submission -> Review -> Publication workflow documented below.
 
 ### Validate Rule Draft
 
@@ -222,20 +219,19 @@ Important response statuses:
 - `400` — invalid publication JSON or invalid positive-decimal submission ID
 - `401` — missing or invalid independent publication credential
 - `404` — submission does not exist, or the publication feature is disabled and the route is not registered
-- `409` — submission is not publishable, current validation failed, publication conflicts with current state, or a previously published rule was later hard-deleted
+- `409` — submission is not publishable, current validation failed, publication conflicts with current state, or a previously published rule was later removed out-of-band from persistence
 - `413` — request body exceeds 4 KiB
 - `415` — unsupported content type
 - `500` — publication integrity or unexpected persistence failure
 
-The success response is audit/provenance-oriented. It does not return the rule snapshot, mutable current `RiskRule` fields, review reason, draft digest, source provenance internals, credentials, SQL, or raw persistence errors. If a publication-created `RiskRule` is later hard-deleted, retry returns conflict and never recreates that rule.
+The success response is audit/provenance-oriented. It does not return the rule snapshot, mutable current `RiskRule` fields, review reason, draft digest, source provenance internals, credentials, SQL, or raw persistence errors. If a publication-created `RiskRule` is later removed out-of-band from persistence, retry returns conflict and never recreates that rule.
 
 ## Cases
 
 - `GET /cases?q=&category_code=`
-- `POST /cases`
 - `GET /cases/{id}`
-- `PUT /cases/{id}`
-- `DELETE /cases/{id}`
+
+Persisted scam-case content is read-only through the default public API. There is no anonymous HTTP endpoint for creating, updating, or deleting cases. Maintainer changes may be made through reviewed repository seed-data changes or a future separately designed and authorized mutation capability.
 
 ## Text Analysis
 
