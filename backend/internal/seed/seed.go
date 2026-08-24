@@ -40,7 +40,7 @@ func Import(db *gorm.DB, dataDir string) error {
 	}); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	return importFile(filepath.Join(dataDir, "scam_cases_sample.zh-CN.json"), &[]database.ScamCase{}, func(items []database.ScamCase) error {
+	if err := importFile(filepath.Join(dataDir, "scam_cases_sample.zh-CN.json"), &[]database.ScamCase{}, func(items []database.ScamCase) error {
 		for _, item := range items {
 			var existing database.ScamCase
 			if err := db.Where("title = ?", item.Title).First(&existing).Error; errors.Is(err, gorm.ErrRecordNotFound) {
@@ -50,7 +50,15 @@ func Import(db *gorm.DB, dataDir string) error {
 			}
 		}
 		return nil
-	})
+	}); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+
+	// database.Connect prepares history for existing installations before seed
+	// import. A fresh database has no rules at that point, so run the same
+	// idempotent preparation again after seed creation to establish honest v1
+	// legacy baselines during the first startup rather than the second.
+	return database.PrepareRiskRuleVersionHistory(db)
 }
 
 func importFile[T any](path string, target *[]T, save func([]T) error) error {

@@ -29,9 +29,33 @@ type RiskRule struct {
 	Enabled            bool      `json:"enabled" gorm:"not null;default:true"`
 	Explanation        string    `json:"explanation"`
 	Recommendation     string    `json:"recommendation"`
+	Version            uint      `json:"version" gorm:"not null;default:1;check:chk_risk_rule_version_positive,version > 0"`
 	SourceSubmissionID *uint     `json:"-" gorm:"index"`
 	CreatedAt          time.Time `json:"created_at"`
 	UpdatedAt          time.Time `json:"updated_at"`
+}
+
+type RiskRuleVersion struct {
+	ID                 uint      `json:"id" gorm:"primaryKey"`
+	RiskRuleID         uint      `json:"risk_rule_id" gorm:"not null;uniqueIndex:ux_risk_rule_versions_rule_version,priority:1"`
+	Version            uint      `json:"version" gorm:"not null;uniqueIndex:ux_risk_rule_versions_rule_version,priority:2;check:chk_risk_rule_version_history_positive,version > 0"`
+	Code               string    `json:"code" gorm:"size:120;not null"`
+	Name               string    `json:"name" gorm:"size:180;not null"`
+	Description        string    `json:"description"`
+	CategoryCode       string    `json:"category_code" gorm:"index;size:100;not null"`
+	RuleType           string    `json:"rule_type" gorm:"size:40;not null"`
+	Pattern            string    `json:"pattern" gorm:"not null"`
+	Weight             int       `json:"weight" gorm:"not null"`
+	Severity           string    `json:"severity" gorm:"size:40;not null"`
+	Enabled            bool      `json:"enabled" gorm:"not null"`
+	Explanation        string    `json:"explanation"`
+	Recommendation     string    `json:"recommendation"`
+	SourceKind         string    `json:"source_kind" gorm:"size:40;not null;check:chk_risk_rule_version_source_kind,source_kind IN ('controlled_publication','legacy_baseline')"`
+	SourceSubmissionID *uint     `json:"-" gorm:"index"`
+	ReviewEventID      *uint     `json:"-" gorm:"index"`
+	PublicationEventID *uint     `json:"-" gorm:"uniqueIndex"`
+	SnapshotDigest     string    `json:"-" gorm:"size:64;not null"`
+	CreatedAt          time.Time `json:"created_at" gorm:"index"`
 }
 
 type RuleSubmission struct {

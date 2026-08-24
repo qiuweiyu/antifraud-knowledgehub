@@ -35,6 +35,7 @@ func newAnalysisHandlerTestDB(t *testing.T) *gorm.DB {
 		Enabled:        true,
 		Explanation:    "要求向所谓安全账户转账是高风险信号。",
 		Recommendation: "通过官方渠道独立核验，不要按对方要求转账。",
+		Version:        1,
 	}).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -94,8 +95,8 @@ func TestPreviewAnalysisReturnsExplainableResultWithoutHistoryWrite(t *testing.T
 		t.Fatalf("expected matched explainable rule, got %+v", payload.Data)
 	}
 	matched := payload.Data.MatchedRules[0]
-	if matched.RuleCode != "test_safe_account" || matched.Evidence == "" || matched.Explanation == "" || matched.Recommendation == "" {
-		t.Fatalf("expected rule provenance/evidence in result, got %+v", matched)
+	if matched.RuleCode != "test_safe_account" || matched.RuleVersion != 1 || matched.Evidence == "" || matched.Explanation == "" || matched.Recommendation == "" {
+		t.Fatalf("expected exact rule version/provenance/evidence in result, got %+v", matched)
 	}
 	if got := analysisRecordCount(t, db); got != 0 {
 		t.Fatalf("preview must not create analysis history, got %d rows", got)
@@ -116,7 +117,7 @@ func TestPreviewAnalysisInvalidRequestDoesNotWriteHistory(t *testing.T) {
 	}
 }
 
-func TestPersistedAnalysisRetainsHistoryBehaviorAndSharesResultLogic(t *testing.T) {
+func TestPersistedAnalysisRetainsExactRuleVersionAndSharesResultLogic(t *testing.T) {
 	db := newAnalysisHandlerTestDB(t)
 	body := map[string]string{"text": "客服称账户异常，需要转账到安全账户。"}
 
@@ -135,6 +136,9 @@ func TestPersistedAnalysisRetainsHistoryBehaviorAndSharesResultLogic(t *testing.
 	if !reflect.DeepEqual(preview.Data, persisted.Data) {
 		t.Fatalf("preview and persisted analysis must share result logic\npreview=%+v\npersisted=%+v", preview.Data, persisted.Data)
 	}
+	if len(persisted.Data.MatchedRules) != 1 || persisted.Data.MatchedRules[0].RuleVersion != 1 {
+		t.Fatalf("persisted response must identify exact rule version: %+v", persisted.Data.MatchedRules)
+	}
 	if got := analysisRecordCount(t, db); got != 1 {
 		t.Fatalf("persisted /analysis/text must create one history row, got %d", got)
 	}
@@ -144,5 +148,12 @@ func TestPersistedAnalysisRetainsHistoryBehaviorAndSharesResultLogic(t *testing.
 	}
 	if record.InputText != body["text"] || record.RiskScore != persisted.Data.RiskScore || record.RiskLevel != persisted.Data.RiskLevel {
 		t.Fatalf("persisted history changed semantics: %+v", record)
+	}
+	var stored []riskengine.MatchedRule
+	if err := json.Unmarshal(record.MatchedRules, &stored); err != nil {
+		t.Fatal(err)
+	}
+	if len(stored) != 1 || stored[0].RuleCode != "test_safe_account" || stored[0].RuleVersion != 1 {
+		t.Fatalf("new AnalysisRecord must persist exact matched rule version: %+v", stored)
 	}
 }

@@ -22,7 +22,7 @@ const (
 func newPublicationTransportTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	db := newReviewTransportTestDB(t)
-	if err := db.AutoMigrate(&database.RuleSubmissionPublicationEvent{}); err != nil {
+	if err := db.AutoMigrate(&database.RuleSubmissionPublicationEvent{}, &database.RiskRuleVersion{}); err != nil {
 		t.Fatal(err)
 	}
 	return db
@@ -171,14 +171,17 @@ func TestPublicationRouteCompletesApprovedSubmissionAndReplays(t *testing.T) {
 	if first.Code != http.StatusCreated {
 		t.Fatalf("first controlled publication must return 201, got %d: %s", first.Code, first.Body.String())
 	}
+	if !strings.Contains(first.Body.String(), `"risk_rule_version":1`) {
+		t.Fatalf("first controlled publication must report risk_rule_version=1: %s", first.Body.String())
+	}
 	assertPublicationTransportState(t, db, submission.ID, 1, 1)
 
 	replay := performPublicationTransportRequest(router, id, "Bearer "+publicationTransportTestToken, "application/json", `{}`)
 	if replay.Code != http.StatusOK {
 		t.Fatalf("exact controlled publication replay must return 200, got %d: %s", replay.Code, replay.Body.String())
 	}
-	if !strings.Contains(replay.Body.String(), `"replay":true`) {
-		t.Fatalf("replay response must explicitly report replay=true: %s", replay.Body.String())
+	if !strings.Contains(replay.Body.String(), `"replay":true`) || !strings.Contains(replay.Body.String(), `"risk_rule_version":1`) {
+		t.Fatalf("replay response must report replay=true and risk_rule_version=1: %s", replay.Body.String())
 	}
 	assertPublicationTransportState(t, db, submission.ID, 1, 1)
 }

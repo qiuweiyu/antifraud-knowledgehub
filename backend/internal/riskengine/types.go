@@ -10,10 +10,12 @@ type Rule struct {
 	Severity       string
 	Explanation    string
 	Recommendation string
+	Version        uint
 }
 
 type MatchedRule struct {
 	RuleCode       string `json:"rule_code"`
+	RuleVersion    uint   `json:"rule_version"`
 	RuleName       string `json:"rule_name"`
 	CategoryCode   string `json:"category_code"`
 	Weight         int    `json:"weight"`

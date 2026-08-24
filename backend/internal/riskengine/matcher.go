@@ -13,7 +13,7 @@ func matchRules(text string, rules []Rule) []MatchedRule {
 			continue
 		}
 		out = append(out, MatchedRule{
-			RuleCode: rule.Code, RuleName: rule.Name, CategoryCode: rule.CategoryCode,
+			RuleCode: rule.Code, RuleVersion: rule.Version, RuleName: rule.Name, CategoryCode: rule.CategoryCode,
 			Weight: rule.Weight, Severity: rule.Severity, Evidence: evidence,
 			Explanation: rule.Explanation, Recommendation: rule.Recommendation,
 		})

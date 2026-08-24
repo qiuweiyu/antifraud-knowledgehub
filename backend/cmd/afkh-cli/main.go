@@ -57,10 +57,16 @@ func loadEngine() riskengine.Engine {
 		if !item.Enabled {
 			continue
 		}
+		// Static community seed JSON intentionally carries no server-owned history
+		// metadata. For deterministic CLI output it represents the baseline snapshot.
+		version := item.Version
+		if version == 0 {
+			version = 1
+		}
 		rules = append(rules, riskengine.Rule{
 			Code: item.Code, Name: item.Name, CategoryCode: item.CategoryCode, RuleType: item.RuleType,
 			Pattern: item.Pattern, Weight: item.Weight, Severity: item.Severity,
-			Explanation: item.Explanation, Recommendation: item.Recommendation,
+			Explanation: item.Explanation, Recommendation: item.Recommendation, Version: version,
 		})
 	}
 	return riskengine.New(rules)
