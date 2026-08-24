@@ -10,7 +10,7 @@ import (
 	"gorm.io/gorm"
 )
 
-func TestPostgresConcurrentIdenticalPublicationsConvergeOnOneRuleAndEvent(t *testing.T) {
+func TestPostgresConcurrentIdenticalPublicationsConvergeOnOneRuleEventAndVersion(t *testing.T) {
 	db, dsn := publicationPostgresTestDB(t)
 	submission := createApprovedPublicationSubmission(t, db, reviewDraft("postgres_publish_same_submission"))
 	command := SubmissionPublicationCommand{ActorLabel: "publisher-a"}
@@ -18,10 +18,12 @@ func TestPostgresConcurrentIdenticalPublicationsConvergeOnOneRuleAndEvent(t *tes
 	const callers = 12
 	sessions := openPublicationPostgresSessions(t, dsn, callers)
 	type result struct {
-		ruleID  uint
-		eventID uint
-		replay  bool
-		err     error
+		ruleID    uint
+		eventID   uint
+		versionID uint
+		version   uint
+		replay    bool
+		err       error
 	}
 	start := make(chan struct{})
 	results := make(chan result, callers)
@@ -30,12 +32,12 @@ func TestPostgresConcurrentIdenticalPublicationsConvergeOnOneRuleAndEvent(t *tes
 		go func() {
 			<-start
 			outcome, err := PublishApprovedSubmission(session, submission.ID, command)
-			results <- result{ruleID: outcome.RiskRule.ID, eventID: outcome.Event.ID, replay: outcome.Replay, err: err}
+			results <- result{ruleID: outcome.RiskRule.ID, eventID: outcome.Event.ID, versionID: outcome.RuleVersion.ID, version: outcome.RuleVersion.Version, replay: outcome.Replay, err: err}
 		}()
 	}
 	close(start)
 
-	var canonicalRuleID, canonicalEventID uint
+	var canonicalRuleID, canonicalEventID, canonicalVersionID uint
 	created := 0
 	for i := 0; i < callers; i++ {
 		got := <-results
@@ -43,14 +45,14 @@ func TestPostgresConcurrentIdenticalPublicationsConvergeOnOneRuleAndEvent(t *tes
 			t.Errorf("concurrent publication %d failed: %v", i, got.err)
 			continue
 		}
-		if got.ruleID == 0 || got.eventID == 0 {
-			t.Errorf("concurrent publication %d returned empty identity: %+v", i, got)
+		if got.ruleID == 0 || got.eventID == 0 || got.versionID == 0 || got.version != 1 {
+			t.Errorf("concurrent publication %d returned empty/invalid identity: %+v", i, got)
 			continue
 		}
 		if canonicalRuleID == 0 {
-			canonicalRuleID, canonicalEventID = got.ruleID, got.eventID
-		} else if got.ruleID != canonicalRuleID || got.eventID != canonicalEventID {
-			t.Errorf("all identical publications must converge: want rule/event %d/%d got %d/%d", canonicalRuleID, canonicalEventID, got.ruleID, got.eventID)
+			canonicalRuleID, canonicalEventID, canonicalVersionID = got.ruleID, got.eventID, got.versionID
+		} else if got.ruleID != canonicalRuleID || got.eventID != canonicalEventID || got.versionID != canonicalVersionID {
+			t.Errorf("all identical publications must converge: want rule/event/version %d/%d/%d got %d/%d/%d", canonicalRuleID, canonicalEventID, canonicalVersionID, got.ruleID, got.eventID, got.versionID)
 		}
 		if !got.replay {
 			created++
@@ -95,6 +97,9 @@ func TestPostgresConcurrentDifferentPublishersAllowOneWinner(t *testing.T) {
 			successes++
 			if got.outcome.Replay {
 				t.Fatalf("different publishers cannot be exact replay on first race: %+v", got)
+			}
+			if got.outcome.RuleVersion.Version != 1 {
+				t.Fatalf("first winner must publish v1: %+v", got.outcome.RuleVersion)
 			}
 		case errors.Is(got.err, ErrSubmissionPublicationConflict):
 			conflicts++
@@ -143,6 +148,9 @@ func TestPostgresConcurrentDifferentApprovedSubmissionsSameCodeHaveOneWinner(t *
 		switch {
 		case got.err == nil:
 			successes++
+			if got.outcome.RuleVersion.Version != 1 {
+				t.Fatalf("same-code winner must establish v1: %+v", got.outcome.RuleVersion)
+			}
 		case errors.Is(got.err, ErrSubmissionPublicationConflict), errors.Is(got.err, ErrSubmissionPublicationValidation):
 			losers++
 			loserID = got.submissionID
@@ -201,6 +209,7 @@ func publicationPostgresTestDB(t *testing.T) (*gorm.DB, string) {
 	sqlDB.SetMaxOpenConns(32)
 	drop := func() {
 		_ = db.Migrator().DropTable(
+			&database.RiskRuleVersion{},
 			&database.RuleSubmissionPublicationEvent{},
 			&database.RuleSubmissionReviewEvent{},
 			&database.RuleSubmission{},
@@ -220,11 +229,15 @@ func publicationPostgresTestDB(t *testing.T) (*gorm.DB, string) {
 		&database.RuleSubmission{},
 		&database.RuleSubmissionReviewEvent{},
 		&database.RuleSubmissionPublicationEvent{},
+		&database.RiskRuleVersion{},
 	); err != nil {
 		t.Fatalf("migrate PostgreSQL publication integration schema: %v", err)
 	}
 	if err := database.PrepareRuleSubmissionIdempotency(db); err != nil {
 		t.Fatalf("prepare PostgreSQL publication idempotency dependencies: %v", err)
+	}
+	if err := database.PrepareRiskRuleVersionHistory(db); err != nil {
+		t.Fatalf("prepare PostgreSQL rule version dependencies: %v", err)
 	}
 	if err := db.Create(&database.Category{Code: "fake_customer_service", Name: "PostgreSQL publication category", SeverityDefault: "high"}).Error; err != nil {
 		t.Fatal(err)
