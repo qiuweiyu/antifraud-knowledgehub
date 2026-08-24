@@ -43,6 +43,9 @@ func TestPublishApprovedSubmissionCopiesStoredSnapshotAndCreatesAudit(t *testing
 				rule.Explanation != submission.Explanation || rule.Recommendation != submission.Recommendation {
 				t.Fatalf("published rule must copy stored snapshot exactly: submission=%+v rule=%+v", submission, rule)
 			}
+			if rule.Version != 1 {
+				t.Fatalf("initial publication must create rule version 1, got %d", rule.Version)
+			}
 			if rule.SourceSubmissionID == nil || *rule.SourceSubmissionID != submission.ID {
 				t.Fatalf("published rule must carry server-owned source provenance: %+v", rule.SourceSubmissionID)
 			}
@@ -53,12 +56,22 @@ func TestPublishApprovedSubmissionCopiesStoredSnapshotAndCreatesAudit(t *testing
 			if event.ActorKind != ControlledPublisherActorKind || event.ActorLabel != "publisher-console-a" || event.DraftDigest != reviewEvent.DraftDigest || event.CreatedAt.IsZero() {
 				t.Fatalf("unexpected publication audit metadata: %+v", event)
 			}
+			version := outcome.RuleVersion
+			if version.RiskRuleID != rule.ID || version.Version != 1 || version.SourceKind != database.RiskRuleVersionSourceControlledPublication ||
+				version.SourceSubmissionID == nil || *version.SourceSubmissionID != submission.ID ||
+				version.ReviewEventID == nil || *version.ReviewEventID != reviewEvent.ID ||
+				version.PublicationEventID == nil || *version.PublicationEventID != event.ID {
+				t.Fatalf("unexpected initial rule version provenance: %+v", version)
+			}
+			if err := database.VerifyRiskRuleMatchesVersion(rule, version); err != nil {
+				t.Fatalf("published current projection must match v1 history: %v", err)
+			}
 			assertPublicationCounts(t, db, 1, 1)
 		})
 	}
 }
 
-func TestManualRiskRuleCreationKeepsPublicationProvenanceNull(t *testing.T) {
+func TestManualRiskRuleCreationKeepsPublicationProvenanceNullAndBaselinesOnPreparation(t *testing.T) {
 	db := publicationTestDB(t)
 	manual := reviewDraft("manual_rule_provenance").riskRule()
 	if err := db.Create(&manual).Error; err != nil {
@@ -69,6 +82,23 @@ func TestManualRiskRuleCreationKeepsPublicationProvenanceNull(t *testing.T) {
 	}
 	if got := countPublicationEventRows(t, db); got != 0 {
 		t.Fatalf("manual rule creation must create zero publication events, got %d", got)
+	}
+	if err := database.PrepareRiskRuleVersionHistory(db); err != nil {
+		t.Fatal(err)
+	}
+	var stored database.RiskRule
+	if err := db.First(&stored, manual.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	var version database.RiskRuleVersion
+	if err := db.Where("risk_rule_id = ? AND version = ?", manual.ID, 1).First(&version).Error; err != nil {
+		t.Fatal(err)
+	}
+	if stored.Version != 1 || version.SourceKind != database.RiskRuleVersionSourceLegacyBaseline {
+		t.Fatalf("manual rule must become honest legacy v1 baseline: rule=%+v version=%+v", stored, version)
+	}
+	if err := database.VerifyRiskRuleMatchesVersion(stored, version); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -204,8 +234,8 @@ func TestLegacyApprovedNullDigestCanPublishWithoutBackfill(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if outcome.Event.DraftDigest == "" {
-		t.Fatal("publication event must persist recomputed legacy digest")
+	if outcome.Event.DraftDigest == "" || outcome.RuleVersion.Version != 1 {
+		t.Fatalf("publication must persist recomputed legacy digest and v1: %+v", outcome)
 	}
 	var after database.RuleSubmission
 	if err := db.First(&after, legacy.ID).Error; err != nil {
@@ -248,10 +278,13 @@ func TestPublicationRevalidatesStoredApprovedSnapshot(t *testing.T) {
 		if got := countRiskRuleRows(t, db); got != 1 {
 			t.Fatalf("failed publication must preserve only pre-existing rule, got %d", got)
 		}
+		if got := countRiskRuleVersionRows(t, db); got != 0 {
+			t.Fatalf("failed publication must create no history, got %d", got)
+		}
 	})
 }
 
-func TestPublicationEventInsertFailureRollsBackRiskRule(t *testing.T) {
+func TestPublicationEventInsertFailureRollsBackRiskRuleAndVersion(t *testing.T) {
 	db := publicationTestDB(t)
 	submission := createApprovedPublicationSubmission(t, db, reviewDraft("publish_event_rollback"))
 	if err := db.Exec(`CREATE TRIGGER fail_publication_event_insert BEFORE INSERT ON rule_submission_publication_events BEGIN SELECT RAISE(ABORT, 'injected publication event failure'); END;`).Error; err != nil {
@@ -267,6 +300,19 @@ func TestPublicationEventInsertFailureRollsBackRiskRule(t *testing.T) {
 	}
 }
 
+func TestPublicationVersionInsertFailureRollsBackRuleAndEvent(t *testing.T) {
+	db := publicationTestDB(t)
+	submission := createApprovedPublicationSubmission(t, db, reviewDraft("publish_version_rollback"))
+	if err := db.Exec(`CREATE TRIGGER fail_rule_version_insert BEFORE INSERT ON risk_rule_versions BEGIN SELECT RAISE(ABORT, 'injected rule version failure'); END;`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := PublishApprovedSubmission(db, submission.ID, SubmissionPublicationCommand{ActorLabel: "publisher-a"}); err == nil {
+		t.Fatal("expected injected rule version insert failure")
+	}
+	assertPublicationCounts(t, db, 0, 0)
+	assertSubmissionStatus(t, db, submission.ID, ApprovedSubmissionStatus)
+}
+
 func TestExactPublicationReplayAndDifferentPublisherConflict(t *testing.T) {
 	db := publicationTestDB(t)
 	submission := createApprovedPublicationSubmission(t, db, reviewDraft("publish_replay"))
@@ -278,8 +324,8 @@ func TestExactPublicationReplayAndDifferentPublisherConflict(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !replay.Replay || replay.Event.ID != first.Event.ID || replay.RiskRule.ID != first.RiskRule.ID {
-		t.Fatalf("exact retry must resolve to original publication: first=%+v replay=%+v", first, replay)
+	if !replay.Replay || replay.Event.ID != first.Event.ID || replay.RiskRule.ID != first.RiskRule.ID || replay.RuleVersion.ID != first.RuleVersion.ID || replay.RuleVersion.Version != 1 {
+		t.Fatalf("exact retry must resolve to original publication/version: first=%+v replay=%+v", first, replay)
 	}
 	if _, err := PublishApprovedSubmission(db, submission.ID, SubmissionPublicationCommand{ActorLabel: "publisher-b"}); !errors.Is(err, ErrSubmissionPublicationConflict) {
 		t.Fatalf("different publisher must conflict, got %v", err)
@@ -297,6 +343,7 @@ func TestPublicationReadHelpersAreReadOnly(t *testing.T) {
 	beforeRules := countRiskRuleRows(t, db)
 	beforeEvents := countPublicationEventRows(t, db)
 	beforeReviews := countReviewEventRows(t, db)
+	beforeVersions := countRiskRuleVersionRows(t, db)
 
 	bySubmission, err := GetSubmissionPublicationEvent(db, submission.ID)
 	if err != nil || bySubmission.ID != published.Event.ID {
@@ -318,12 +365,12 @@ func TestPublicationReadHelpersAreReadOnly(t *testing.T) {
 	if err != nil || source.ID != submission.ID {
 		t.Fatalf("unexpected current rule provenance source: %+v err=%v", source, err)
 	}
-	if countRiskRuleRows(t, db) != beforeRules || countPublicationEventRows(t, db) != beforeEvents || countReviewEventRows(t, db) != beforeReviews {
-		t.Fatal("publication read helpers must not mutate rules, publication events, or review events")
+	if countRiskRuleRows(t, db) != beforeRules || countPublicationEventRows(t, db) != beforeEvents || countReviewEventRows(t, db) != beforeReviews || countRiskRuleVersionRows(t, db) != beforeVersions {
+		t.Fatal("publication read helpers must not mutate rules, publication events, review events, or versions")
 	}
 }
 
-func TestPublishedRuleLifecycleDoesNotRewriteAuditOrAutoRepublish(t *testing.T) {
+func TestPublicationReplayUsesHistoricalVersionAfterCurrentDriftOrDelete(t *testing.T) {
 	db := publicationTestDB(t)
 	submission := createApprovedPublicationSubmission(t, db, reviewDraft("publish_lifecycle"))
 	published, err := PublishApprovedSubmission(db, submission.ID, SubmissionPublicationCommand{ActorLabel: "publisher-a"})
@@ -331,6 +378,8 @@ func TestPublishedRuleLifecycleDoesNotRewriteAuditOrAutoRepublish(t *testing.T) 
 		t.Fatal(err)
 	}
 	originalEvent := published.Event
+	originalName := published.RiskRule.Name
+	originalEnabled := published.RiskRule.Enabled
 
 	if err := db.Model(&database.RiskRule{}).Where("id = ?", published.RiskRule.ID).Updates(map[string]any{"name": "mutated after publication", "enabled": false}).Error; err != nil {
 		t.Fatal(err)
@@ -339,8 +388,8 @@ func TestPublishedRuleLifecycleDoesNotRewriteAuditOrAutoRepublish(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !replay.Replay || replay.RiskRule.Name != "mutated after publication" || replay.RiskRule.Enabled {
-		t.Fatalf("replay must return current rule without overwriting later changes: %+v", replay.RiskRule)
+	if !replay.Replay || replay.RuleVersion.Version != 1 || replay.RiskRule.Name != originalName || replay.RiskRule.Enabled != originalEnabled {
+		t.Fatalf("replay must return exact historical v1 rather than drifted current rule: %+v", replay)
 	}
 	storedEvent, err := GetSubmissionPublicationEvent(db, submission.ID)
 	if err != nil {
@@ -356,8 +405,12 @@ func TestPublishedRuleLifecycleDoesNotRewriteAuditOrAutoRepublish(t *testing.T) 
 	if got := countPublicationEventRows(t, db); got != 1 {
 		t.Fatalf("hard delete must not remove publication history, got %d events", got)
 	}
-	if _, err := PublishApprovedSubmission(db, submission.ID, SubmissionPublicationCommand{ActorLabel: "publisher-a"}); !errors.Is(err, ErrSubmissionPublicationConflict) {
-		t.Fatalf("retry after hard delete must not recreate rule, got %v", err)
+	replayAfterDelete, err := PublishApprovedSubmission(db, submission.ID, SubmissionPublicationCommand{ActorLabel: "publisher-a"})
+	if err != nil {
+		t.Fatalf("historical replay must survive missing current rule: %v", err)
+	}
+	if !replayAfterDelete.Replay || replayAfterDelete.RuleVersion.ID != published.RuleVersion.ID || replayAfterDelete.RiskRule.ID != published.RiskRule.ID {
+		t.Fatalf("retry after hard delete must resolve original historical version without recreating current rule: %+v", replayAfterDelete)
 	}
 	assertPublicationCounts(t, db, 0, 1)
 	assertSubmissionStatus(t, db, submission.ID, ApprovedSubmissionStatus)
@@ -382,7 +435,10 @@ func TestPublicationSourceRelationshipsRestrictDeletion(t *testing.T) {
 func publicationTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	db := reviewTestDB(t)
-	if err := db.AutoMigrate(&database.RuleSubmissionPublicationEvent{}); err != nil {
+	if err := db.AutoMigrate(&database.RuleSubmissionPublicationEvent{}, &database.RiskRuleVersion{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.PrepareRiskRuleVersionHistory(db); err != nil {
 		t.Fatal(err)
 	}
 	return db
@@ -423,6 +479,15 @@ func countPublicationEventRows(t *testing.T, db *gorm.DB) int64 {
 	return count
 }
 
+func countRiskRuleVersionRows(t *testing.T, db *gorm.DB) int64 {
+	t.Helper()
+	var count int64
+	if err := db.Model(&database.RiskRuleVersion{}).Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	return count
+}
+
 func assertPublicationCounts(t *testing.T, db *gorm.DB, wantRules, wantEvents int64) {
 	t.Helper()
 	if got := countRiskRuleRows(t, db); got != wantRules {
@@ -430,6 +495,9 @@ func assertPublicationCounts(t *testing.T, db *gorm.DB, wantRules, wantEvents in
 	}
 	if got := countPublicationEventRows(t, db); got != wantEvents {
 		t.Fatalf("unexpected publication event count: want=%d got=%d", wantEvents, got)
+	}
+	if got := countRiskRuleVersionRows(t, db); got != wantEvents {
+		t.Fatalf("unexpected RiskRuleVersion count: want=%d got=%d", wantEvents, got)
 	}
 }
 
