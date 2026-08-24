@@ -27,10 +27,13 @@ func Connect(cfg config.Config) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := db.AutoMigrate(&Category{}, &RiskRule{}, &RuleSubmission{}, &RuleSubmissionReviewEvent{}, &RuleSubmissionPublicationEvent{}, &ScamCase{}, &AnalysisRecord{}); err != nil {
+	if err := db.AutoMigrate(&Category{}, &RiskRule{}, &RiskRuleVersion{}, &RuleSubmission{}, &RuleSubmissionReviewEvent{}, &RuleSubmissionPublicationEvent{}, &ScamCase{}, &AnalysisRecord{}); err != nil {
 		return nil, err
 	}
 	if err := PrepareRuleSubmissionIdempotency(db); err != nil {
+		return nil, err
+	}
+	if err := PrepareRiskRuleVersionHistory(db); err != nil {
 		return nil, err
 	}
 	rdb := redis.NewClient(&redis.Options{Addr: cfg.RedisAddr})
