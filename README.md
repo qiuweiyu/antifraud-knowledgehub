@@ -162,7 +162,8 @@ Real screenshots captured from the runnable local MVP are available in
 
 ## Documentation
 
-- [v0.1.3 release candidate notes](docs/releases/v0.1.3.md)
+- [v0.1.4 security patch release candidate notes](docs/releases/v0.1.4.md)
+- [v0.1.3 release notes source](docs/releases/v0.1.3.md)
 - [Architecture](docs/architecture.md)
 - [API](docs/api.md)
 - [Data schema](docs/data-schema.md)
