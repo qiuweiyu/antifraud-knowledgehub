@@ -12,12 +12,12 @@ import (
 )
 
 const (
-	RiskRuleSnapshotDigestVersion                 = "afkh-risk-rule-snapshot:v1"
-	RiskRuleVersionSourceControlledPublication    = "controlled_publication"
-	RiskRuleVersionSourceLegacyBaseline           = "legacy_baseline"
-	controlledPublicationActorKind                = "controlled_publisher"
-	controlledMaintainerActorKind                 = "controlled_maintainer"
-	approvedRuleSubmissionStatus                  = "approved"
+	RiskRuleSnapshotDigestVersion                  = "afkh-risk-rule-snapshot:v1"
+	RiskRuleVersionSourceControlledPublication     = "controlled_publication"
+	RiskRuleVersionSourceLegacyBaseline            = "legacy_baseline"
+	controlledPublicationActorKind                 = "controlled_publisher"
+	controlledMaintainerActorKind                  = "controlled_maintainer"
+	approvedRuleSubmissionStatus                   = "approved"
 	pendingRuleSubmissionStatusForVersionIntegrity = "pending"
 )
 
@@ -226,7 +226,7 @@ func PrepareRiskRuleVersionHistory(db *gorm.DB) error {
 }
 
 func backfillUnlinkedPublication(tx *gorm.DB, event RuleSubmissionPublicationEvent) error {
-	submission, review, digest, err := loadAndValidatePublicationSource(tx, event)
+	submission, _, digest, err := loadAndValidatePublicationSource(tx, event)
 	if err != nil {
 		return err
 	}
