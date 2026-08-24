@@ -60,7 +60,7 @@ func (h Handler) analyzeText(text string) riskengine.Result {
 		rules = append(rules, riskengine.Rule{
 			Code: item.Code, Name: item.Name, CategoryCode: item.CategoryCode, RuleType: item.RuleType,
 			Pattern: item.Pattern, Weight: item.Weight, Severity: item.Severity,
-			Explanation: item.Explanation, Recommendation: item.Recommendation,
+			Explanation: item.Explanation, Recommendation: item.Recommendation, Version: item.Version,
 		})
 	}
 	return riskengine.New(rules).Analyze(text)
