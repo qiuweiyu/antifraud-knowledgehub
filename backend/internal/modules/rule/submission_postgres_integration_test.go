@@ -11,7 +11,8 @@ import (
 
 const postgresSubmissionIntegrationDSNEnv = "AFKH_POSTGRES_INTEGRATION_DSN"
 
-func TestPostgresConcurrentExactReplayConvergesOnOnePendingSubmission(t *testing.T) {
+func postgresSubmissionIntegrationDB(t *testing.T) *gorm.DB {
+	t.Helper()
 	dsn := os.Getenv(postgresSubmissionIntegrationDSNEnv)
 	if dsn == "" {
 		t.Skipf("%s is not configured", postgresSubmissionIntegrationDSNEnv)
@@ -26,27 +27,44 @@ func TestPostgresConcurrentExactReplayConvergesOnOnePendingSubmission(t *testing
 		t.Fatal(err)
 	}
 	sqlDB.SetMaxOpenConns(32)
+	drop := func() {
+		_ = db.Migrator().DropTable(
+			&database.RuleSubmissionPublicationEvent{},
+			&database.RuleSubmissionReviewEvent{},
+			&database.RuleSubmission{},
+			&database.RiskRuleVersion{},
+			&database.RiskRule{},
+			&database.Category{},
+		)
+	}
+	drop()
 	t.Cleanup(func() {
-		_ = db.Migrator().DropTable(&database.RuleSubmissionReviewEvent{}, &database.RuleSubmission{}, &database.RiskRule{}, &database.Category{})
+		drop()
 		_ = sqlDB.Close()
 	})
 
-	_ = db.Migrator().DropTable(&database.RuleSubmissionReviewEvent{}, &database.RuleSubmission{}, &database.RiskRule{}, &database.Category{})
-	if err := db.AutoMigrate(&database.Category{}, &database.RiskRule{}, &database.RuleSubmission{}); err != nil {
+	if err := db.AutoMigrate(&database.Category{}, &database.RiskRule{}, &database.RiskRuleVersion{}, &database.RuleSubmission{}); err != nil {
 		t.Fatalf("migrate PostgreSQL integration schema: %v", err)
 	}
 	if err := database.PrepareRuleSubmissionIdempotency(db); err != nil {
 		t.Fatalf("prepare PostgreSQL idempotency invariant: %v", err)
 	}
-	if !db.Migrator().HasIndex(&database.RuleSubmission{}, database.RuleSubmissionPendingDigestIndex) {
-		t.Fatalf("expected PostgreSQL partial unique index %s", database.RuleSubmissionPendingDigestIndex)
+	if db.Migrator().HasIndex(&database.RuleSubmission{}, database.RuleSubmissionPendingDigestIndex) {
+		t.Fatalf("legacy PostgreSQL partial unique index %s must be removed", database.RuleSubmissionPendingDigestIndex)
+	}
+	if !db.Migrator().HasIndex(&database.RuleSubmission{}, database.RuleSubmissionPendingRequestDigestIndex) {
+		t.Fatalf("expected PostgreSQL partial unique index %s", database.RuleSubmissionPendingRequestDigestIndex)
 	}
 	if err := db.Create(&database.Category{
 		Code: "fake_customer_service", Name: "PostgreSQL integration category", SeverityDefault: "high",
 	}).Error; err != nil {
 		t.Fatal(err)
 	}
+	return db
+}
 
+func TestPostgresConcurrentExactReplayConvergesOnOnePendingSubmission(t *testing.T) {
+	db := postgresSubmissionIntegrationDB(t)
 	draft := DraftRequest{
 		Code: "postgres_concurrent_replay", Name: "PostgreSQL concurrent replay",
 		CategoryCode: "fake_customer_service", RuleType: "keyword", Pattern: "synthetic concurrent signal",
@@ -71,6 +89,111 @@ func TestPostgresConcurrentExactReplayConvergesOnOnePendingSubmission(t *testing
 	}
 	close(start)
 
+	assertConcurrentSubmissionConvergence(t, outcomes, callers)
+
+	var total int64
+	if err := db.Model(&database.RuleSubmission{}).Count(&total).Error; err != nil {
+		t.Fatal(err)
+	}
+	if total != 1 {
+		t.Fatalf("expected exactly one pending row after %d concurrent creates, got %d", callers, total)
+	}
+	var guarded int64
+	if err := db.Model(&database.RuleSubmission{}).
+		Where("status = ? AND request_digest IS NOT NULL", PendingSubmissionStatus).
+		Count(&guarded).Error; err != nil {
+		t.Fatal(err)
+	}
+	if guarded != 1 {
+		t.Fatalf("expected exactly one non-null pending request digest, got %d", guarded)
+	}
+	if got := countRiskRuleRows(t, db); got != 0 {
+		t.Fatalf("concurrent submission replay must not create RiskRule rows, got %d", got)
+	}
+}
+
+func TestPostgresConcurrentExactRevisionReplayConvergesWithoutMutatingRule(t *testing.T) {
+	db := postgresSubmissionIntegrationDB(t)
+	target := database.RiskRule{
+		Code: "postgres_revision_replay", Name: "PostgreSQL revision target",
+		CategoryCode: "fake_customer_service", RuleType: "keyword", Pattern: "synthetic revision base",
+		Weight: 40, Severity: "high", Enabled: true, Explanation: "Synthetic", Recommendation: "Verify",
+		Version: 1,
+	}
+	if err := db.Create(&target).Error; err != nil {
+		t.Fatal(err)
+	}
+	base, err := database.BuildRiskRuleVersion(target, 1, database.RiskRuleVersionSourceLegacyBaseline)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&base).Error; err != nil {
+		t.Fatal(err)
+	}
+	beforeDigest, err := database.RiskRuleSnapshotDigest(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	enabled := true
+	request := RevisionDraftRequest{
+		BaseVersion: 1, Name: "PostgreSQL revision target revised", CategoryCode: "fake_customer_service",
+		RuleType: "keyword", Pattern: "synthetic revision base", Weight: 40, Severity: "high", Enabled: &enabled,
+		Explanation: "Synthetic", Recommendation: "Verify",
+	}
+
+	const callers = 24
+	type outcome struct {
+		id      uint
+		created bool
+		valid   bool
+		err     error
+	}
+	start := make(chan struct{})
+	outcomes := make(chan outcome, callers)
+	for i := 0; i < callers; i++ {
+		go func() {
+			<-start
+			submission, result, created, err := CreateOrReplayPendingRevisionSubmission(db, target.ID, request)
+			outcomes <- outcome{id: submission.ID, created: created, valid: result.Valid, err: err}
+		}()
+	}
+	close(start)
+	assertConcurrentSubmissionConvergence(t, outcomes, callers)
+
+	var total int64
+	if err := db.Model(&database.RuleSubmission{}).Count(&total).Error; err != nil {
+		t.Fatal(err)
+	}
+	if total != 1 {
+		t.Fatalf("expected one pending revision after concurrent exact replay, got %d", total)
+	}
+	var current database.RiskRule
+	if err := db.First(&current, target.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	afterDigest, err := database.RiskRuleSnapshotDigest(current)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current.Version != 1 || afterDigest != beforeDigest {
+		t.Fatalf("concurrent revision proposals mutated executable Rule: version=%d digest=%s", current.Version, afterDigest)
+	}
+	var versionCount int64
+	if err := db.Model(&database.RiskRuleVersion{}).Where("risk_rule_id = ?", target.ID).Count(&versionCount).Error; err != nil {
+		t.Fatal(err)
+	}
+	if versionCount != 1 {
+		t.Fatalf("I2 revision proposal must append zero history versions, total=%d", versionCount)
+	}
+}
+
+func assertConcurrentSubmissionConvergence(t *testing.T, outcomes <-chan struct {
+	id      uint
+	created bool
+	valid   bool
+	err     error
+}, callers int) {
+	t.Helper()
 	var canonicalID uint
 	createdCount := 0
 	for i := 0; i < callers; i++ {
@@ -92,25 +215,5 @@ func TestPostgresConcurrentExactReplayConvergesOnOnePendingSubmission(t *testing
 	}
 	if createdCount != 1 {
 		t.Fatalf("database invariant must produce exactly one winner, got %d created callers", createdCount)
-	}
-
-	var total int64
-	if err := db.Model(&database.RuleSubmission{}).Count(&total).Error; err != nil {
-		t.Fatal(err)
-	}
-	if total != 1 {
-		t.Fatalf("expected exactly one pending row after %d concurrent creates, got %d", callers, total)
-	}
-	var guarded int64
-	if err := db.Model(&database.RuleSubmission{}).
-		Where("status = ? AND draft_digest IS NOT NULL", PendingSubmissionStatus).
-		Count(&guarded).Error; err != nil {
-		t.Fatal(err)
-	}
-	if guarded != 1 {
-		t.Fatalf("expected exactly one non-null pending digest, got %d", guarded)
-	}
-	if got := countRiskRuleRows(t, db); got != 0 {
-		t.Fatalf("concurrent submission replay must not create RiskRule rows, got %d", got)
 	}
 }
