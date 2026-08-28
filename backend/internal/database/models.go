@@ -66,7 +66,7 @@ const (
 type RuleSubmission struct {
 	ID               uint       `json:"id" gorm:"primaryKey"`
 	Status           string     `json:"status" gorm:"index;size:32;not null;default:pending"`
-	Kind             string     `json:"kind" gorm:"index;size:16;not null;default:create;check:chk_rule_submission_kind,kind IN ('create','revision')"`
+	Kind             string     `json:"kind" gorm:"index;size:16;not null;default:create;check:chk_rule_submission_kind,kind IN ('create','revision');check:chk_rule_submission_intent_shape,(kind = 'create' AND target_risk_rule_id IS NULL AND base_version IS NULL) OR (kind = 'revision' AND target_risk_rule_id IS NOT NULL AND base_version IS NOT NULL AND base_version > 0)"`
 	TargetRiskRuleID *uint      `json:"target_risk_rule_id,omitempty" gorm:"index"`
 	BaseVersion      *uint      `json:"base_version,omitempty" gorm:"check:chk_rule_submission_base_version,base_version IS NULL OR base_version > 0"`
 	Code             string     `json:"code" gorm:"index;size:120;not null"`
