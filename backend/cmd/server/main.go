@@ -90,19 +90,32 @@ func newRouterWithBrowserSession(cfg config.Config, browserSessionCfg config.Bro
 	}
 
 	if cfg.RuleSubmissionsEnabled {
+		submissionRateConfig := middleware.SubmissionRateConfig{
+			CredentialLimit: cfg.RuleSubmissionCredentialLimit,
+			GlobalLimit:     cfg.RuleSubmissionGlobalLimit,
+			Window:          cfg.RuleSubmissionRateWindow,
+		}
+		submissionAuthorization := middleware.SubmissionWriteAuthorization(cfg.RuleSubmissionWriteToken)
+
 		v1.POST(
 			"/rule-submissions",
+			submissionAuthorization,
+			middleware.SubmissionWriteRateLimit(
+				middleware.RedisSubmissionRateBackend{Client: store.Redis},
+				cfg.RuleSubmissionWriteToken,
+				submissionRateConfig,
+			),
+			rule.SubmissionCreateHandler(store.DB),
+		)
+		v1.POST(
+			"/rules/:id/revision-submissions",
 			middleware.SubmissionWriteAuthorization(cfg.RuleSubmissionWriteToken),
 			middleware.SubmissionWriteRateLimit(
 				middleware.RedisSubmissionRateBackend{Client: store.Redis},
 				cfg.RuleSubmissionWriteToken,
-				middleware.SubmissionRateConfig{
-					CredentialLimit: cfg.RuleSubmissionCredentialLimit,
-					GlobalLimit:     cfg.RuleSubmissionGlobalLimit,
-					Window:          cfg.RuleSubmissionRateWindow,
-				},
+				submissionRateConfig,
 			),
-			rule.SubmissionCreateHandler(store.DB),
+			rule.RevisionSubmissionCreateHandler(store.DB),
 		)
 	}
 
@@ -118,6 +131,7 @@ func newRouterWithBrowserSession(cfg config.Config, browserSessionCfg config.Bro
 		v1.POST(
 			"/rule-submissions/:id/publications",
 			middleware.SubmissionPublicationAuthorization(cfg.RuleSubmissionPublicationToken),
+			rule.RevisionPublicationI2Guard(store.DB),
 			rule.SubmissionPublicationHandler(store.DB, cfg.RuleSubmissionPublicationActorLabel),
 		)
 	}
