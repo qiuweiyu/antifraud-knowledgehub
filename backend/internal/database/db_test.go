@@ -20,11 +20,16 @@ func TestConnectAutoMigratesRuleSubmission(t *testing.T) {
 	if !store.DB.Migrator().HasTable(&RuleSubmission{}) {
 		t.Fatal("expected RuleSubmission table to be created by database startup migration")
 	}
-	if !store.DB.Migrator().HasColumn(&RuleSubmission{}, "DraftDigest") {
-		t.Fatal("expected RuleSubmission draft_digest column to be prepared at startup")
+	for _, column := range []string{"DraftDigest", "Kind", "TargetRiskRuleID", "BaseVersion", "RequestDigest"} {
+		if !store.DB.Migrator().HasColumn(&RuleSubmission{}, column) {
+			t.Fatalf("expected RuleSubmission %s column to be prepared at startup", column)
+		}
 	}
-	if !store.DB.Migrator().HasIndex(&RuleSubmission{}, RuleSubmissionPendingDigestIndex) {
-		t.Fatalf("expected partial unique index %s to be prepared at startup", RuleSubmissionPendingDigestIndex)
+	if store.DB.Migrator().HasIndex(&RuleSubmission{}, RuleSubmissionPendingDigestIndex) {
+		t.Fatalf("legacy partial unique index %s must be removed at startup", RuleSubmissionPendingDigestIndex)
+	}
+	if !store.DB.Migrator().HasIndex(&RuleSubmission{}, RuleSubmissionPendingRequestDigestIndex) {
+		t.Fatalf("expected partial unique index %s to be prepared at startup", RuleSubmissionPendingRequestDigestIndex)
 	}
 	if !store.DB.Migrator().HasTable(&RuleSubmissionReviewEvent{}) {
 		t.Fatal("expected RuleSubmissionReviewEvent table to be created by database startup migration")
