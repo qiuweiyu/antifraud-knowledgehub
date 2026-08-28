@@ -60,6 +60,55 @@ type ValidationResult struct {
 }
 
 func ValidateDraft(db *gorm.DB, draft DraftRequest) ValidationResult {
+	result := validateDraftFields(db, draft)
+	draft.Code = strings.TrimSpace(draft.Code)
+	if draft.Code != "" {
+		var count int64
+		db.Model(&database.RiskRule{}).Where("code = ?", draft.Code).Count(&count)
+		if count > 0 {
+			addError(&result, "code", "duplicate_code", "rule code already exists")
+		}
+	}
+	result.Valid = len(result.Errors) == 0
+	return result
+}
+
+// ValidateRevisionDraft applies the ordinary Rule field validation contract
+// while allowing only the target Rule's own immutable code and rejecting a
+// canonical no-op against the trusted base history snapshot.
+func ValidateRevisionDraft(db *gorm.DB, target database.RiskRule, base database.RiskRuleVersion, draft DraftRequest) (ValidationResult, error) {
+	result := validateDraftFields(db, draft)
+	draft.Code = strings.TrimSpace(draft.Code)
+
+	if draft.Code != target.Code {
+		addError(&result, "code", "code_immutable", "rule code cannot change through a revision")
+	}
+	if draft.Code != "" {
+		var count int64
+		db.Model(&database.RiskRule{}).
+			Where("code = ? AND id <> ?", draft.Code, target.ID).
+			Count(&count)
+		if count > 0 {
+			addError(&result, "code", "duplicate_code", "rule code belongs to a different rule")
+		}
+	}
+
+	proposed := draft.riskRule()
+	proposed.ID = target.ID
+	proposed.Version = base.Version
+	proposedDigest, err := database.RiskRuleSnapshotDigest(proposed)
+	if err != nil {
+		return ValidationResult{}, fmt.Errorf("compute proposed revision snapshot digest: %w", err)
+	}
+	if proposedDigest == base.SnapshotDigest {
+		addError(&result, "base_version", "no_changes", "revision does not change the trusted base rule snapshot")
+	}
+
+	result.Valid = len(result.Errors) == 0
+	return result, nil
+}
+
+func validateDraftFields(db *gorm.DB, draft DraftRequest) ValidationResult {
 	result := ValidationResult{
 		Valid:    true,
 		Errors:   []ValidationError{},
@@ -85,14 +134,6 @@ func ValidateDraft(db *gorm.DB, draft DraftRequest) ValidationResult {
 	maxLength(&result, "category_code", draft.CategoryCode, maxCategoryCodeLength)
 	maxLength(&result, "rule_type", draft.RuleType, maxRuleTypeLength)
 	maxLength(&result, "severity", draft.Severity, maxSeverityLength)
-
-	if draft.Code != "" {
-		var count int64
-		db.Model(&database.RiskRule{}).Where("code = ?", draft.Code).Count(&count)
-		if count > 0 {
-			addError(&result, "code", "duplicate_code", "rule code already exists")
-		}
-	}
 
 	if draft.CategoryCode != "" {
 		var count int64

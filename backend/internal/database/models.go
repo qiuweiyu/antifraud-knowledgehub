@@ -58,23 +58,32 @@ type RiskRuleVersion struct {
 	CreatedAt          time.Time `json:"created_at" gorm:"index"`
 }
 
+const (
+	RuleSubmissionKindCreate   = "create"
+	RuleSubmissionKindRevision = "revision"
+)
+
 type RuleSubmission struct {
-	ID             uint       `json:"id" gorm:"primaryKey"`
-	Status         string     `json:"status" gorm:"index;size:32;not null;default:pending"`
-	Code           string     `json:"code" gorm:"index;size:120;not null"`
-	Name           string     `json:"name" gorm:"size:180;not null"`
-	Description    string     `json:"description"`
-	CategoryCode   string     `json:"category_code" gorm:"index;size:100;not null"`
-	RuleType       string     `json:"rule_type" gorm:"size:40;not null"`
-	Pattern        string     `json:"pattern" gorm:"not null"`
-	Weight         int        `json:"weight" gorm:"not null"`
-	Severity       string     `json:"severity" gorm:"size:40;not null"`
-	Enabled        bool       `json:"enabled" gorm:"not null"`
-	Explanation    string     `json:"explanation"`
-	Recommendation string     `json:"recommendation"`
-	DraftDigest    *string    `json:"-" gorm:"size:64"`
-	CreatedAt      time.Time  `json:"created_at" gorm:"index"`
-	UpdatedAt      time.Time  `json:"updated_at"`
+	ID               uint       `json:"id" gorm:"primaryKey"`
+	Status           string     `json:"status" gorm:"index;size:32;not null;default:pending"`
+	Kind             string     `json:"kind" gorm:"index;size:16;not null;default:create;check:chk_rule_submission_kind,kind IN ('create','revision');check:chk_rule_submission_intent_shape,(kind = 'create' AND target_risk_rule_id IS NULL AND base_version IS NULL) OR (kind = 'revision' AND target_risk_rule_id IS NOT NULL AND base_version IS NOT NULL AND base_version > 0)"`
+	TargetRiskRuleID *uint      `json:"target_risk_rule_id,omitempty" gorm:"index"`
+	BaseVersion      *uint      `json:"base_version,omitempty" gorm:"check:chk_rule_submission_base_version,base_version IS NULL OR base_version > 0"`
+	Code             string     `json:"code" gorm:"index;size:120;not null"`
+	Name             string     `json:"name" gorm:"size:180;not null"`
+	Description      string     `json:"description"`
+	CategoryCode     string     `json:"category_code" gorm:"index;size:100;not null"`
+	RuleType         string     `json:"rule_type" gorm:"size:40;not null"`
+	Pattern          string     `json:"pattern" gorm:"not null"`
+	Weight           int        `json:"weight" gorm:"not null"`
+	Severity         string     `json:"severity" gorm:"size:40;not null"`
+	Enabled          bool       `json:"enabled" gorm:"not null"`
+	Explanation      string     `json:"explanation"`
+	Recommendation   string     `json:"recommendation"`
+	DraftDigest      *string    `json:"-" gorm:"size:64"`
+	RequestDigest    *string    `json:"-" gorm:"size:64"`
+	CreatedAt        time.Time  `json:"created_at" gorm:"index"`
+	UpdatedAt        time.Time  `json:"updated_at"`
 }
 
 type RuleSubmissionReviewEvent struct {

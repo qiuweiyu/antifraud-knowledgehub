@@ -31,6 +31,7 @@ func (legacyRuleSubmission) TableName() string { return "rule_submissions" }
 
 func digestFixtureSubmission() RuleSubmission {
 	return RuleSubmission{
+		Kind:           RuleSubmissionKindCreate,
 		Code:           "fixture_code",
 		Name:           "Fixture Name",
 		Description:    "Fixture description",
@@ -56,6 +57,23 @@ func TestRuleSubmissionDraftDigestKnownV1Fixture(t *testing.T) {
 	}
 	if len(digest) != 64 || digest != strings.ToLower(digest) {
 		t.Fatalf("digest must be 64 lowercase hex characters: %q", digest)
+	}
+}
+
+func TestRuleSubmissionRequestDigestKnownV1CreateFixture(t *testing.T) {
+	submission := digestFixtureSubmission()
+	draftDigest, err := RuleSubmissionDraftDigest(submission)
+	if err != nil {
+		t.Fatal(err)
+	}
+	submission.DraftDigest = stringPointer(draftDigest)
+	requestDigest, err := RuleSubmissionRequestDigest(submission)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const want = "6e6919ae69828bd8e9b4dbfc21ccf0e5ed25aca2eb48b2bb04f1822e548594d9"
+	if requestDigest != want {
+		t.Fatalf("request digest drifted: got %s want %s", requestDigest, want)
 	}
 }
 
@@ -94,17 +112,23 @@ func TestRuleSubmissionDraftDigestChangesForEveryPersistedDraftField(t *testing.
 	}
 }
 
-func TestRuleSubmissionDraftDigestExcludesSystemOwnedFields(t *testing.T) {
+func TestRuleSubmissionDraftDigestExcludesIntentAndSystemOwnedFields(t *testing.T) {
 	base := digestFixtureSubmission()
 	baseDigest, err := RuleSubmissionDraftDigest(base)
 	if err != nil {
 		t.Fatal(err)
 	}
 	arbitraryDigest := strings.Repeat("f", 64)
+	targetID := uint(77)
+	baseVersion := uint(3)
 	changed := base
 	changed.ID = 99
 	changed.Status = "reviewed_test_fixture"
+	changed.Kind = RuleSubmissionKindRevision
+	changed.TargetRiskRuleID = &targetID
+	changed.BaseVersion = &baseVersion
 	changed.DraftDigest = &arbitraryDigest
+	changed.RequestDigest = &arbitraryDigest
 	changed.CreatedAt = time.Now().UTC()
 	changed.UpdatedAt = changed.CreatedAt.Add(time.Hour)
 	got, err := RuleSubmissionDraftDigest(changed)
@@ -112,7 +136,59 @@ func TestRuleSubmissionDraftDigestExcludesSystemOwnedFields(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got != baseDigest {
-		t.Fatalf("system-owned fields must not affect replay identity: got %s want %s", got, baseDigest)
+		t.Fatalf("intent/system fields must not affect draft digest: got %s want %s", got, baseDigest)
+	}
+}
+
+func TestRuleSubmissionRequestDigestSeparatesIntentTargetBaseAndDraft(t *testing.T) {
+	base := digestFixtureSubmission()
+	createDigest, err := RuleSubmissionRequestDigest(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	target1, target2 := uint(10), uint(11)
+	version1, version2 := uint(1), uint(2)
+	revision := base
+	revision.Kind = RuleSubmissionKindRevision
+	revision.TargetRiskRuleID = &target1
+	revision.BaseVersion = &version1
+	revisionDigest, err := RuleSubmissionRequestDigest(revision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if revisionDigest == createDigest {
+		t.Fatal("create and revision intent must not share request digest")
+	}
+
+	otherTarget := revision
+	otherTarget.TargetRiskRuleID = &target2
+	otherTargetDigest, err := RuleSubmissionRequestDigest(otherTarget)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if otherTargetDigest == revisionDigest {
+		t.Fatal("different revision target must change request digest")
+	}
+
+	otherBase := revision
+	otherBase.BaseVersion = &version2
+	otherBaseDigest, err := RuleSubmissionRequestDigest(otherBase)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if otherBaseDigest == revisionDigest {
+		t.Fatal("different revision base must change request digest")
+	}
+
+	otherDraft := revision
+	otherDraft.Pattern += " changed"
+	otherDraftDigest, err := RuleSubmissionRequestDigest(otherDraft)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if otherDraftDigest == revisionDigest {
+		t.Fatal("different revision draft must change request digest")
 	}
 }
 
@@ -154,17 +230,31 @@ func TestPrepareRuleSubmissionIdempotencyBackfillsLegacyDuplicatesSafely(t *test
 	if rows[0].Description != "preserve me" || rows[0].Pattern != "synthetic signal" || rows[1].Pattern != "synthetic signal" {
 		t.Fatalf("legacy draft content was unexpectedly rewritten: %+v", rows)
 	}
-	if rows[0].DraftDigest == nil {
-		t.Fatal("earliest exact legacy duplicate must become the guarded representative")
+	for i, row := range rows {
+		if row.Kind != RuleSubmissionKindCreate || row.TargetRiskRuleID != nil || row.BaseVersion != nil {
+			t.Fatalf("legacy row %d must be honestly backfilled as create: %+v", i, row)
+		}
+		if row.DraftDigest == nil {
+			t.Fatalf("legacy row %d must receive exact content draft digest", i)
+		}
 	}
-	if rows[1].DraftDigest != nil {
-		t.Fatalf("later exact legacy duplicate must remain nullable, got %q", *rows[1].DraftDigest)
+	if *rows[0].DraftDigest != *rows[1].DraftDigest {
+		t.Fatal("exact duplicate legacy content must retain equal draft digests")
 	}
-	if rows[2].DraftDigest == nil || *rows[2].DraftDigest == *rows[0].DraftDigest {
-		t.Fatal("distinct legacy draft must receive its own digest")
+	if rows[0].RequestDigest == nil {
+		t.Fatal("earliest exact legacy pending request must become guarded representative")
 	}
-	if !db.Migrator().HasIndex(&RuleSubmission{}, RuleSubmissionPendingDigestIndex) {
-		t.Fatalf("expected partial unique index %s", RuleSubmissionPendingDigestIndex)
+	if rows[1].RequestDigest != nil {
+		t.Fatalf("later exact legacy pending duplicate must remain request-digest nullable, got %q", *rows[1].RequestDigest)
+	}
+	if rows[2].RequestDigest == nil || *rows[2].RequestDigest == *rows[0].RequestDigest {
+		t.Fatal("distinct legacy pending request must receive its own request digest")
+	}
+	if db.Migrator().HasIndex(&RuleSubmission{}, RuleSubmissionPendingDigestIndex) {
+		t.Fatalf("legacy pending draft digest index %s must be removed", RuleSubmissionPendingDigestIndex)
+	}
+	if !db.Migrator().HasIndex(&RuleSubmission{}, RuleSubmissionPendingRequestDigestIndex) {
+		t.Fatalf("expected partial unique index %s", RuleSubmissionPendingRequestDigestIndex)
 	}
 
 	duplicate := rows[0]
@@ -172,7 +262,7 @@ func TestPrepareRuleSubmissionIdempotencyBackfillsLegacyDuplicatesSafely(t *test
 	duplicate.CreatedAt = time.Time{}
 	duplicate.UpdatedAt = time.Time{}
 	if err := db.Create(&duplicate).Error; err == nil {
-		t.Fatal("partial unique index must reject a second non-null pending digest")
+		t.Fatal("partial unique request index must reject a second non-null pending request digest")
 	}
 
 	nonPending := rows[0]
@@ -181,7 +271,65 @@ func TestPrepareRuleSubmissionIdempotencyBackfillsLegacyDuplicatesSafely(t *test
 	nonPending.CreatedAt = time.Time{}
 	nonPending.UpdatedAt = time.Time{}
 	if err := db.Create(&nonPending).Error; err != nil {
-		t.Fatalf("pending-scoped uniqueness must not block future non-pending history: %v", err)
+		t.Fatalf("pending-scoped request uniqueness must not block non-pending history: %v", err)
+	}
+}
+
+func TestRuleSubmissionDatabaseIntentShapeConstraint(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.AutoMigrate(&RuleSubmission{}); err != nil {
+		t.Fatal(err)
+	}
+
+	targetID := uint(77)
+	baseVersion := uint(3)
+	invalid := map[string]func(*RuleSubmission){
+		"create_with_target": func(row *RuleSubmission) {
+			row.Kind = RuleSubmissionKindCreate
+			row.TargetRiskRuleID = &targetID
+		},
+		"create_with_base": func(row *RuleSubmission) {
+			row.Kind = RuleSubmissionKindCreate
+			row.BaseVersion = &baseVersion
+		},
+		"revision_without_target": func(row *RuleSubmission) {
+			row.Kind = RuleSubmissionKindRevision
+			row.BaseVersion = &baseVersion
+		},
+		"revision_without_base": func(row *RuleSubmission) {
+			row.Kind = RuleSubmissionKindRevision
+			row.TargetRiskRuleID = &targetID
+		},
+	}
+	for name, mutate := range invalid {
+		t.Run(name, func(t *testing.T) {
+			row := digestFixtureSubmission()
+			row.Status = "pending"
+			mutate(&row)
+			if err := db.Create(&row).Error; err == nil {
+				t.Fatalf("database must reject invalid submission intent shape: %+v", row)
+			}
+		})
+	}
+
+	validCreate := digestFixtureSubmission()
+	validCreate.Status = "pending"
+	validCreate.Code = "valid_create_shape"
+	if err := db.Create(&validCreate).Error; err != nil {
+		t.Fatalf("database rejected valid create intent: %v", err)
+	}
+
+	validRevision := digestFixtureSubmission()
+	validRevision.Status = "pending"
+	validRevision.Kind = RuleSubmissionKindRevision
+	validRevision.TargetRiskRuleID = &targetID
+	validRevision.BaseVersion = &baseVersion
+	validRevision.Code = "valid_revision_shape"
+	if err := db.Create(&validRevision).Error; err != nil {
+		t.Fatalf("database rejected valid revision intent: %v", err)
 	}
 }
 

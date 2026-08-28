@@ -19,12 +19,18 @@ func CreatePendingSubmission(db *gorm.DB, draft DraftRequest) (database.RuleSubm
 
 func CreateOrReplayPendingSubmission(db *gorm.DB, draft DraftRequest) (database.RuleSubmission, ValidationResult, bool, error) {
 	submission := pendingSubmissionSnapshot(draft)
-	digest, err := database.RuleSubmissionDraftDigest(submission)
+	draftDigest, err := database.RuleSubmissionDraftDigest(submission)
 	if err != nil {
 		return database.RuleSubmission{}, ValidationResult{}, false, err
 	}
+	submission.DraftDigest = stringPtr(draftDigest)
+	requestDigest, err := database.RuleSubmissionRequestDigest(submission)
+	if err != nil {
+		return database.RuleSubmission{}, ValidationResult{}, false, err
+	}
+	submission.RequestDigest = stringPtr(requestDigest)
 
-	existing, err := getPendingSubmissionByDigest(db, digest)
+	existing, err := getPendingSubmissionByRequestDigest(db, requestDigest)
 	if err == nil {
 		return existing, replayValidationResult(), false, nil
 	}
@@ -37,13 +43,11 @@ func CreateOrReplayPendingSubmission(db *gorm.DB, draft DraftRequest) (database.
 		return database.RuleSubmission{}, result, false, nil
 	}
 
-	submissionDigest := digest
-	submission.DraftDigest = &submissionDigest
 	if err := db.Create(&submission).Error; err == nil {
 		return submission, result, true, nil
 	} else {
 		createErr := err
-		winner, lookupErr := getPendingSubmissionByDigest(db, digest)
+		winner, lookupErr := getPendingSubmissionByRequestDigest(db, requestDigest)
 		if lookupErr == nil {
 			return winner, replayValidationResult(), false, nil
 		}
@@ -55,6 +59,7 @@ func pendingSubmissionSnapshot(draft DraftRequest) database.RuleSubmission {
 	ruleSnapshot := draft.riskRule()
 	return database.RuleSubmission{
 		Status:         PendingSubmissionStatus,
+		Kind:           database.RuleSubmissionKindCreate,
 		Code:           ruleSnapshot.Code,
 		Name:           ruleSnapshot.Name,
 		Description:    ruleSnapshot.Description,
@@ -69,10 +74,10 @@ func pendingSubmissionSnapshot(draft DraftRequest) database.RuleSubmission {
 	}
 }
 
-func getPendingSubmissionByDigest(db *gorm.DB, digest string) (database.RuleSubmission, error) {
+func getPendingSubmissionByRequestDigest(db *gorm.DB, digest string) (database.RuleSubmission, error) {
 	var submission database.RuleSubmission
 	if err := db.
-		Where("status = ? AND draft_digest = ?", PendingSubmissionStatus, digest).
+		Where("status = ? AND request_digest = ?", PendingSubmissionStatus, digest).
 		First(&submission).Error; err != nil {
 		return database.RuleSubmission{}, err
 	}
@@ -107,4 +112,9 @@ func GetPendingSubmission(db *gorm.DB, id uint) (database.RuleSubmission, error)
 		return database.RuleSubmission{}, err
 	}
 	return submission, nil
+}
+
+func stringPtr(value string) *string {
+	copy := value
+	return &copy
 }

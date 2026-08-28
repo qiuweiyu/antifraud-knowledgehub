@@ -11,18 +11,18 @@ import (
 )
 
 const (
-	ApprovedSubmissionStatus          = "approved"
-	RejectedSubmissionStatus          = "rejected"
-	ControlledMaintainerActorKind     = "controlled_maintainer"
-	maxSubmissionReviewReasonBytes    = 2000
+	ApprovedSubmissionStatus           = "approved"
+	RejectedSubmissionStatus           = "rejected"
+	ControlledMaintainerActorKind      = "controlled_maintainer"
+	maxSubmissionReviewReasonBytes     = 2000
 	maxSubmissionReviewActorLabelBytes = 120
 )
 
 var (
-	ErrInvalidSubmissionReview       = errors.New("invalid rule submission review command")
-	ErrSubmissionReviewConflict      = errors.New("rule submission review conflict")
-	ErrSubmissionApprovalValidation  = errors.New("rule submission approval validation failed")
-	ErrSubmissionReviewIntegrity     = errors.New("rule submission review integrity violation")
+	ErrInvalidSubmissionReview      = errors.New("invalid rule submission review command")
+	ErrSubmissionReviewConflict     = errors.New("rule submission review conflict")
+	ErrSubmissionApprovalValidation = errors.New("rule submission approval validation failed")
+	ErrSubmissionReviewIntegrity    = errors.New("rule submission review integrity violation")
 )
 
 type SubmissionReviewCommand struct {
@@ -77,9 +77,16 @@ func ReviewPendingSubmission(db *gorm.DB, submissionID uint, command SubmissionR
 			return nil
 		}
 
+		if err := validateStoredSubmissionIntentForReview(submission); err != nil {
+			return err
+		}
+
 		validation := ValidationResult{}
 		if normalized.Decision == ApprovedSubmissionStatus {
-			validation = ValidateDraft(tx, draftRequestFromSubmission(submission))
+			validation, err = validateSubmissionForApproval(tx, submission)
+			if err != nil {
+				return err
+			}
 			if !validation.Valid {
 				outcome.Validation = validation
 				return ErrSubmissionApprovalValidation
@@ -92,6 +99,15 @@ func ReviewPendingSubmission(db *gorm.DB, submissionID uint, command SubmissionR
 		}
 		if submission.DraftDigest != nil && *submission.DraftDigest != digest {
 			return fmt.Errorf("%w: submission %d draft digest does not match stored snapshot", ErrSubmissionReviewIntegrity, submission.ID)
+		}
+		if submission.RequestDigest != nil {
+			requestDigest, err := database.RuleSubmissionRequestDigest(submission)
+			if err != nil {
+				return fmt.Errorf("%w: submission %d request intent is invalid: %v", ErrSubmissionReviewIntegrity, submission.ID, err)
+			}
+			if *submission.RequestDigest != requestDigest {
+				return fmt.Errorf("%w: submission %d request digest does not match stored intent/snapshot", ErrSubmissionReviewIntegrity, submission.ID)
+			}
 		}
 
 		now := time.Now().UTC()
@@ -141,6 +157,69 @@ func ReviewPendingSubmission(db *gorm.DB, submissionID uint, command SubmissionR
 		return resolveSubmissionReviewAfterCASLoss(db, submissionID, normalized)
 	}
 	return outcome, nil
+}
+
+func validateStoredSubmissionIntentForReview(submission database.RuleSubmission) error {
+	kind := strings.TrimSpace(submission.Kind)
+	if kind == "" {
+		kind = database.RuleSubmissionKindCreate
+	}
+	switch kind {
+	case database.RuleSubmissionKindCreate:
+		if submission.TargetRiskRuleID != nil || submission.BaseVersion != nil {
+			return fmt.Errorf("%w: create submission %d contains revision target/base metadata", ErrSubmissionReviewIntegrity, submission.ID)
+		}
+	case database.RuleSubmissionKindRevision:
+		if submission.TargetRiskRuleID == nil || *submission.TargetRiskRuleID == 0 || submission.BaseVersion == nil || *submission.BaseVersion == 0 {
+			return fmt.Errorf("%w: revision submission %d has invalid target/base metadata", ErrSubmissionReviewIntegrity, submission.ID)
+		}
+	default:
+		return fmt.Errorf("%w: submission %d has unsupported kind %q", ErrSubmissionReviewIntegrity, submission.ID, submission.Kind)
+	}
+	return nil
+}
+
+func validateSubmissionForApproval(tx *gorm.DB, submission database.RuleSubmission) (ValidationResult, error) {
+	kind := strings.TrimSpace(submission.Kind)
+	if kind == "" || kind == database.RuleSubmissionKindCreate {
+		return ValidateDraft(tx, draftRequestFromSubmission(submission)), nil
+	}
+	if kind != database.RuleSubmissionKindRevision {
+		return ValidationResult{}, fmt.Errorf("%w: submission %d has unsupported kind %q", ErrSubmissionReviewIntegrity, submission.ID, submission.Kind)
+	}
+
+	targetID := *submission.TargetRiskRuleID
+	baseVersion := *submission.BaseVersion
+	target, base, err := loadTrustedRevisionBase(tx, targetID, baseVersion)
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrRevisionRuleNotFound):
+			return invalidRevisionApproval("target_risk_rule_id", "rule_not_found", "target rule no longer exists"), nil
+		case errors.Is(err, ErrRevisionStaleBaseVersion):
+			return invalidRevisionApproval("base_version", "stale_base_version", "revision base version is no longer current"), nil
+		case errors.Is(err, ErrRevisionRuleVersionIntegrity):
+			return ValidationResult{}, fmt.Errorf("%w: submission %d base integrity failed: %v", ErrSubmissionReviewIntegrity, submission.ID, err)
+		default:
+			return ValidationResult{}, err
+		}
+	}
+	if submission.Code != target.Code {
+		return ValidationResult{}, fmt.Errorf("%w: revision submission %d stored code %q differs from target code %q", ErrSubmissionReviewIntegrity, submission.ID, submission.Code, target.Code)
+	}
+
+	validation, err := ValidateRevisionDraft(tx, target, base, draftRequestFromSubmission(submission))
+	if err != nil {
+		return ValidationResult{}, err
+	}
+	return validation, nil
+}
+
+func invalidRevisionApproval(field, code, message string) ValidationResult {
+	return ValidationResult{
+		Valid:    false,
+		Errors:   []ValidationError{{Field: field, Code: code, Message: message}},
+		Warnings: []ValidationError{},
+	}
 }
 
 func ListSubmissionReviewEvents(db *gorm.DB, submissionID uint) ([]database.RuleSubmissionReviewEvent, error) {
