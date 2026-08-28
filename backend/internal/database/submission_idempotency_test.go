@@ -275,7 +275,7 @@ func TestPrepareRuleSubmissionIdempotencyBackfillsLegacyDuplicatesSafely(t *test
 	}
 }
 
-func TestPrepareRuleSubmissionIdempotencyRejectsInvalidStoredRevisionIntent(t *testing.T) {
+func TestRuleSubmissionDatabaseIntentShapeConstraint(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	if err != nil {
 		t.Fatal(err)
@@ -283,16 +283,53 @@ func TestPrepareRuleSubmissionIdempotencyRejectsInvalidStoredRevisionIntent(t *t
 	if err := db.AutoMigrate(&RuleSubmission{}); err != nil {
 		t.Fatal(err)
 	}
-	row := digestFixtureSubmission()
-	row.Status = "pending"
-	row.Kind = RuleSubmissionKindRevision
-	row.TargetRiskRuleID = nil
-	row.BaseVersion = nil
-	if err := db.Create(&row).Error; err != nil {
-		t.Fatal(err)
+
+	targetID := uint(77)
+	baseVersion := uint(3)
+	invalid := map[string]func(*RuleSubmission){
+		"create_with_target": func(row *RuleSubmission) {
+			row.Kind = RuleSubmissionKindCreate
+			row.TargetRiskRuleID = &targetID
+		},
+		"create_with_base": func(row *RuleSubmission) {
+			row.Kind = RuleSubmissionKindCreate
+			row.BaseVersion = &baseVersion
+		},
+		"revision_without_target": func(row *RuleSubmission) {
+			row.Kind = RuleSubmissionKindRevision
+			row.BaseVersion = &baseVersion
+		},
+		"revision_without_base": func(row *RuleSubmission) {
+			row.Kind = RuleSubmissionKindRevision
+			row.TargetRiskRuleID = &targetID
+		},
 	}
-	if err := PrepareRuleSubmissionIdempotency(db); err == nil {
-		t.Fatal("invalid stored revision intent must fail preparation closed")
+	for name, mutate := range invalid {
+		t.Run(name, func(t *testing.T) {
+			row := digestFixtureSubmission()
+			row.Status = "pending"
+			mutate(&row)
+			if err := db.Create(&row).Error; err == nil {
+				t.Fatalf("database must reject invalid submission intent shape: %+v", row)
+			}
+		})
+	}
+
+	validCreate := digestFixtureSubmission()
+	validCreate.Status = "pending"
+	validCreate.Code = "valid_create_shape"
+	if err := db.Create(&validCreate).Error; err != nil {
+		t.Fatalf("database rejected valid create intent: %v", err)
+	}
+
+	validRevision := digestFixtureSubmission()
+	validRevision.Status = "pending"
+	validRevision.Kind = RuleSubmissionKindRevision
+	validRevision.TargetRiskRuleID = &targetID
+	validRevision.BaseVersion = &baseVersion
+	validRevision.Code = "valid_revision_shape"
+	if err := db.Create(&validRevision).Error; err != nil {
+		t.Fatalf("database rejected valid revision intent: %v", err)
 	}
 }
 
