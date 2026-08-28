@@ -11,6 +11,13 @@ import (
 
 const postgresSubmissionIntegrationDSNEnv = "AFKH_POSTGRES_INTEGRATION_DSN"
 
+type concurrentSubmissionOutcome struct {
+	id      uint
+	created bool
+	valid   bool
+	err     error
+}
+
 func postgresSubmissionIntegrationDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	dsn := os.Getenv(postgresSubmissionIntegrationDSNEnv)
@@ -72,19 +79,13 @@ func TestPostgresConcurrentExactReplayConvergesOnOnePendingSubmission(t *testing
 	}
 
 	const callers = 24
-	type outcome struct {
-		id      uint
-		created bool
-		valid   bool
-		err     error
-	}
 	start := make(chan struct{})
-	outcomes := make(chan outcome, callers)
+	outcomes := make(chan concurrentSubmissionOutcome, callers)
 	for i := 0; i < callers; i++ {
 		go func() {
 			<-start
 			submission, result, created, err := CreateOrReplayPendingSubmission(db, draft)
-			outcomes <- outcome{id: submission.ID, created: created, valid: result.Valid, err: err}
+			outcomes <- concurrentSubmissionOutcome{id: submission.ID, created: created, valid: result.Valid, err: err}
 		}()
 	}
 	close(start)
@@ -142,19 +143,13 @@ func TestPostgresConcurrentExactRevisionReplayConvergesWithoutMutatingRule(t *te
 	}
 
 	const callers = 24
-	type outcome struct {
-		id      uint
-		created bool
-		valid   bool
-		err     error
-	}
 	start := make(chan struct{})
-	outcomes := make(chan outcome, callers)
+	outcomes := make(chan concurrentSubmissionOutcome, callers)
 	for i := 0; i < callers; i++ {
 		go func() {
 			<-start
 			submission, result, created, err := CreateOrReplayPendingRevisionSubmission(db, target.ID, request)
-			outcomes <- outcome{id: submission.ID, created: created, valid: result.Valid, err: err}
+			outcomes <- concurrentSubmissionOutcome{id: submission.ID, created: created, valid: result.Valid, err: err}
 		}()
 	}
 	close(start)
@@ -187,12 +182,7 @@ func TestPostgresConcurrentExactRevisionReplayConvergesWithoutMutatingRule(t *te
 	}
 }
 
-func assertConcurrentSubmissionConvergence(t *testing.T, outcomes <-chan struct {
-	id      uint
-	created bool
-	valid   bool
-	err     error
-}, callers int) {
+func assertConcurrentSubmissionConvergence(t *testing.T, outcomes <-chan concurrentSubmissionOutcome, callers int) {
 	t.Helper()
 	var canonicalID uint
 	createdCount := 0
